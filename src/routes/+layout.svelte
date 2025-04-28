@@ -15,12 +15,12 @@
 	// State for profile fetching indicator (could be useful)
 	let profileLoading = false;
 
-	onMount(async () => {
+	onMount(() => {
 		// Auth handling only runs in the browser
 		if (!browser) return;
 
 		// Initialize auth store (this will handle token validation)
-		await authStore.initialize();
+		authStore.initialize();
 
 		// Get initial session state
 		supabase.auth.getSession().then(({ data: { session } }) => {
@@ -85,10 +85,9 @@
 								await goto('/profile/job-seeker', { replaceState: true });
 							} else if (profileData?.account_type === 'hiring_manager') {
 								await goto('/profile/hiring-manager', { replaceState: true });
-							} else if (profileData) {
-								await goto('/profile/job-seeker', { replaceState: true });
 							} else {
-								await goto('/profile/job-seeker', { replaceState: true });
+								// Default case - don't navigate anywhere if profile type is unknown
+								console.log('Unknown account type, staying on current page');
 							}
 						}
 					}
@@ -130,11 +129,20 @@
 
 	// Logout function
 	async function handleLogout() {
-		// Use the auth store's logout function
-		await authStore.logout();
-		// State will be updated by onAuthStateChange listener
-		// Navigate to home after logout (listener might redirect to login if needed)
-		await goto('/');
+		try {
+			console.log("Logging out user...");
+			// Use the auth store's logout function
+			await authStore.logout();
+			
+			// Explicitly reset user store
+			userStore.reset();
+			
+			// Navigate to home after logout
+			console.log("Redirecting to home page");
+			await goto('/', { replaceState: true });
+		} catch (error) {
+			console.error("Error during logout:", error);
+		}
 	}
 
 	// Determine profile link based on account type
@@ -143,7 +151,7 @@
 		: $userStore.profile?.account_type === 'hiring_manager'
 			? '/profile/hiring-manager' 
 			: $userStore.loggedIn 
-				? '/profile/job-seeker' // Default to job-seeker if logged in but no profile type
+				? '/profile' // Changed: Don't default to any specific profile type
 				: '/login'; // Only go to login if not logged in
 
 	// ---> DEBUGGING START
@@ -169,7 +177,12 @@
 			 <a href={jobBoardLink}>Job Board</a>
 		{/if}
 		<!-- Use a button for actions like logout -->
-		<button on:click={handleLogout} class="logout-link">Logout</button>
+		<button type="button" class="logout-link" on:click={() => {
+			authStore.logout().then(() => {
+				userStore.reset();
+				goto('/');
+			}).catch(err => console.error('Logout error:', err));
+		}}>Logout</button>
 	{:else}
 		<!-- Logged-out user links -->
 		<a href="/">Home</a>

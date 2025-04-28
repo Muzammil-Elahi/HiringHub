@@ -174,6 +174,9 @@
             >
               {job.is_active ? 'Deactivate' : 'Activate'}
             </button>
+            <button class="btn-secondary applications-btn" on:click={() => goto(`/jobs/${job.id}/applications`)}>
+              Applications
+            </button>
             <button class="btn-secondary delete-btn" on:click={() => deleteJob(job.id)}>
               Delete
             </button>
@@ -356,6 +359,11 @@
   .toggle-btn.activate {
     color: var(--success-text-color, #166534);
     border-color: var(--success-border-color, #86efac);
+  }
+  
+  .applications-btn {
+    color: var(--info-text-color, #0369a1);
+    border-color: var(--info-border-color, #93c5fd);
   }
   
   .delete-btn {

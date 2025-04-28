@@ -26,7 +26,7 @@
   let profileIsDefinitelyNull = false; // Track if fetch completed and profile is null
 
   let message = '';
-  let messageType: 'success' | 'error' = 'error';
+  let messageType: 'error' | 'success' | 'info' = 'error';
 
 	// Helper function to initialize form data
 	function initializeFormData(profile: any) {
@@ -222,48 +222,63 @@
         
         // Create a sanitized filename for storage
         const sanitizedFilename = file.name.replace(/[^a-zA-Z0-9-_.]/g, '_');
-        
-        // Construct a unique file path with timestamp and original filename
-        const filePath = `${currentUser.id}/${Date.now()}-${sanitizedFilename}`;
-
-        console.log('Uploading to path:', filePath); // Debug log
 
         // Upload to Supabase Storage (bucket named 'resumes')
         const { data: uploadData, error: uploadError } = await supabase.storage
             .from('resumes')
-            .upload(filePath, file, { 
+            .upload(sanitizedFilename, file, { 
               upsert: true,
               cacheControl: '3600' 
             });
 
         if (uploadError) {
             console.error('Supabase upload error:', uploadError);
+            
+            // Check if error is related to permissions
+            if (uploadError.message?.includes('permission') || uploadError.message?.includes('Unauthorized')) {
+                throw new Error(`Permission denied: ${uploadError.message}. Check Supabase storage bucket permissions.`);
+            }
+            
             throw new Error(`Failed to upload resume: ${uploadError.message}`);
         }
 
-        console.log('Upload successful:', uploadData); // Debug log
+        console.log('Upload successful:', uploadData);
 
         // Get the public URL for the uploaded file
         const { data: urlData } = supabase.storage
             .from('resumes')
-            .getPublicUrl(filePath);
+            .getPublicUrl(sanitizedFilename);
 
-        console.log('URL data:', urlData); // Debug log
+        console.log('URL data:', urlData);
 
         if (!urlData || !urlData.publicUrl) {
-             console.error('Supabase getPublicUrl error: No URL returned for', filePath);
+             console.error('Supabase getPublicUrl error: No URL returned for', sanitizedFilename);
             throw new Error('Could not get public URL for the uploaded resume.');
+        }
+
+        // Test if the URL is accessible
+        console.log('Testing URL accessibility...');
+        try {
+            const testResponse = await fetch(urlData.publicUrl, { method: 'HEAD' });
+            console.log('URL test result:', testResponse.status, testResponse.statusText);
+            
+            if (!testResponse.ok) {
+                console.warn('URL may not be publicly accessible:', testResponse.status);
+            }
+        } catch (fetchError) {
+            console.warn('Could not verify URL accessibility:', fetchError);
+            // Continue anyway as this is just a test
         }
 
         // Update the local state immediately
         resumeUrl = urlData.publicUrl;
-        console.log('Resume URL set to:', resumeUrl); // Debug log
+        console.log('Resume URL set to:', resumeUrl);
         
         message = 'Resume uploaded successfully! Remember to save your profile to persist the link.';
         messageType = 'success';
 
         // Clear the file input visually
-        target.value = ''; // Reset file input
+        target.value = '';
 
     } catch (error: any) {
         console.error('Resume upload process error:', error);
@@ -292,6 +307,11 @@
     loading = true; // Use general loading for saving
     message = '';
     try {
+        console.log('Starting profile update with resume data:', {
+          resumeUrl,
+          resumeFilename
+        });
+        
         const updates = {
             full_name: fullName,
             headline: headline,
@@ -303,14 +323,27 @@
             updated_at: new Date().toISOString(), // Convert Date to string for compatibility
         };
 
-        const { error } = await supabase
+        console.log('Updating profile with data:', updates);
+
+        const { data: updateData, error } = await supabase
             .from('profiles')
             .update(updates)
-            .eq('user_id', currentUser.id);
+            .eq('user_id', currentUser.id)
+            .select();
 
         if (error) throw error;
+        
+        console.log('Profile update response:', updateData);
 
-        userStore.updateProfile(updates); // Update store locally
+        // Update store with the returned data if available, otherwise use our local updates
+        if (updateData && updateData.length > 0) {
+          userStore.set({
+            ...get(userStore),
+            profile: updateData[0]
+          });
+        } else {
+          userStore.updateProfile(updates); // Update store locally
+        }
 
         message = isNewUser 
           ? 'Profile created successfully! You can now browse job postings.' 
@@ -325,6 +358,71 @@
         messageType = 'error';
     } finally {
         loading = false;
+    }
+  }
+
+  // Add deleteResume function after handleProfileUpdate
+  async function deleteResume() {
+    if (!confirm('Are you sure you want to delete your resume? This cannot be undone.')) {
+      return;
+    }
+    
+    const currentUser = get(userStore).user;
+    if (!currentUser || !resumeUrl) {
+      message = 'No resume to delete or you are not logged in.';
+      messageType = 'error';
+      return;
+    }
+    
+    loading = true;
+    message = '';
+    
+    try {
+      // Extract the file path from the URL or use the stored filename
+      // For simplicity, we're just deleting by the filename that we stored earlier
+      if (resumeFilename) {
+        // Delete from storage
+        const { error: deleteError } = await supabase.storage
+          .from('resumes')
+          .remove([resumeFilename]);
+          
+        if (deleteError) {
+          console.error('Error deleting resume:', deleteError);
+          throw new Error(`Failed to delete resume: ${deleteError.message}`);
+        }
+      }
+      
+      // Update profile to remove resume references
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          resume_url: null,
+          resume_filename: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', currentUser.id);
+        
+      if (updateError) throw updateError;
+      
+      // Update local state
+      resumeUrl = '';
+      resumeFilename = '';
+      
+      // Update the user store
+      userStore.updateProfile({
+        resume_url: null,
+        resume_filename: null
+      });
+      
+      message = 'Resume deleted successfully.';
+      messageType = 'success';
+      
+    } catch (error: any) {
+      console.error('Error deleting resume:', error);
+      message = `Failed to delete resume: ${error.message}`;
+      messageType = 'error';
+    } finally {
+      loading = false;
     }
   }
 </script>
@@ -409,9 +507,14 @@
               <div class="resume-thumbnail">
                 <div class="pdf-icon">PDF</div>
                 <p class="resume-filename">{resumeFilename || 'Resume'}</p>
-                <a href={resumeUrl} download="{resumeFilename}" class="download-button">
-                  <span class="download-icon">⬇️</span> Download
-                </a>
+                <div class="resume-buttons">
+                  <a href={resumeUrl} download="{resumeFilename}" class="download-button">
+                    <span class="download-icon">⬇️</span> Download
+                  </a>
+                  <button type="button" class="delete-button" on:click={deleteResume}>
+                    <span class="delete-icon">🗑️</span> Delete
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -460,7 +563,12 @@
        <div class="form-group resume-group">
         <label for="resume">Resume (PDF Only)</label>
         {#if resumeUrl}
-            <p>Current Resume: <a href={resumeUrl} target="_blank" rel="noopener noreferrer">View/Download</a></p>
+            <div class="current-resume">
+              <p>Current Resume: <a href={resumeUrl} target="_blank" rel="noopener noreferrer">View/Download</a></p>
+              <button type="button" class="btn-text-small delete-link" on:click={deleteResume}>
+                Delete Resume
+              </button>
+            </div>
         {:else}
             <p>No resume uploaded.</p>
         {/if}
@@ -469,6 +577,37 @@
             <p>Uploading resume...</p>
          {/if}
         <small>Upload a new resume (PDF only, max 5MB). Save profile to update link.</small>
+        <button type="button" class="btn-text-small" 
+                on:click={async () => {
+                  message = 'Checking storage access...';
+                  messageType = 'info';
+                  try {
+                    // Just verify the bucket is accessible, don't try to create it
+                    const { data: listResult, error: listError } = await supabase.storage
+                      .from('resumes')
+                      .list(get(userStore).user?.id || '', {
+                        limit: 1,
+                        sortBy: { column: 'name', order: 'desc' }
+                      });
+                      
+                    if (listError) {
+                      console.error('Error checking resumes bucket:', listError);
+                      message = `Storage access error: ${listError.message}`;
+                      messageType = 'error';
+                      return;
+                    }
+                    
+                    message = 'Resume storage is accessible. You can upload your resume.';
+                    messageType = 'success';
+                  } catch (err: any) {
+                    console.error('Storage check failed:', err);
+                    message = `Storage check failed: ${err.message}`;
+                    messageType = 'error';
+                  }
+                }}
+              >
+                Check Storage Access
+              </button>
       </div>
 
         <div class="form-actions">
@@ -659,6 +798,12 @@
       border-color: var(--success-border-color, #86efac);
   }
 
+  .message.info {
+      background-color: var(--info-bg-color, #e0f2fe);
+      color: var(--info-text-color, #0369a1);
+      border-color: var(--info-border-color, #93c5fd);
+  }
+
   .form-actions {
     display: flex;
     justify-content: flex-end;
@@ -706,6 +851,22 @@
   .btn-secondary:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+  
+  .btn-text-small {
+    background: none;
+    border: none;
+    padding: 0;
+    margin-top: var(--spacing-xs);
+    font-size: var(--font-size-sm);
+    color: var(--primary-color);
+    text-decoration: underline;
+    cursor: pointer;
+    display: block;
+  }
+  
+  .btn-text-small:hover {
+    color: var(--primary-color-dark);
   }
   
   .edit-profile-btn {
@@ -815,5 +976,49 @@
 
   .download-icon {
     margin-right: var(--spacing-xs);
+  }
+
+  .delete-button {
+    display: inline-flex;
+    align-items: center;
+    background-color: var(--error-bg-color, #fee2e2);
+    color: var(--error-text-color, #b91c1c);
+    padding: 0.4em 0.8em;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--error-border-color, #fca5a5);
+    text-decoration: none;
+    font-size: 0.9em;
+    margin-top: var(--spacing-sm);
+    cursor: pointer;
+  }
+
+  .delete-button:hover {
+    background-color: var(--error-border-color, #fca5a5);
+    text-decoration: none;
+  }
+
+  .delete-icon {
+    margin-right: var(--spacing-xs);
+  }
+
+  .resume-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    align-items: center;
+  }
+
+  .delete-link {
+    color: var(--error-text-color, #b91c1c);
+  }
+
+  .delete-link:hover {
+    color: var(--error-border-color, #fca5a5);
+  }
+
+  .current-resume {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
   }
 </style> 

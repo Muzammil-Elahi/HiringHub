@@ -94,6 +94,14 @@
     try {
       loading = true;
       
+      console.log('Current user profile:', $userStore.profile);
+      
+      if (!$userStore.profile?.resume_url) {
+        alert('Please upload a resume on your profile before applying.');
+        goto('/profile/job-seeker'); // Redirect to profile to upload resume
+        return;
+      }
+      
       // Check if user has already applied
       const { data: existingApplication, error: checkError } = await supabase
         .from('applications')
@@ -109,17 +117,29 @@
         return;
       }
       
-      // Create application
-      const { error: applyError } = await supabase
+      // Create application with 1-click apply
+      const resumeUrl = $userStore.profile.resume_url || '';
+      console.log('Using resume URL for application:', resumeUrl);
+      
+      const applicationData = {
+        job_id: jobId,
+        job_seeker_id: $userStore.user?.id,
+        application_date: new Date().toISOString(),
+        status: 'Submitted',
+        cover_letter: '',
+        resume_snapshot_url: resumeUrl
+      };
+      
+      console.log('Submitting application with data:', applicationData);
+      
+      const { data: applicationResult, error: applyError } = await supabase
         .from('applications')
-        .insert({
-          job_id: jobId,
-          job_seeker_id: $userStore.user?.id,
-          application_date: new Date().toISOString(),
-          status: 'pending'
-        });
+        .insert(applicationData)
+        .select();
       
       if (applyError) throw applyError;
+      
+      console.log('Application submitted successfully:', applicationResult);
       
       alert('Application submitted successfully!');
       
@@ -294,7 +314,7 @@
               View Details
             </button>
             <button class="apply-btn" on:click={() => applyToJob(job.id)}>
-              Apply Now
+              1-Click Apply
             </button>
           </div>
         </div>
@@ -545,10 +565,27 @@
     background-color: var(--primary-color);
     color: var(--primary-contrast-color);
     border: none;
+    position: relative;
   }
   
   .apply-btn:hover {
     background-color: var(--primary-color-dark);
+  }
+  
+  .apply-btn:hover::after {
+    content: "Uses resume from your profile";
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--text-color);
+    color: white;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    z-index: 10;
+    margin-bottom: var(--spacing-xs);
   }
   
   /* Loading, Error, and Empty States */
