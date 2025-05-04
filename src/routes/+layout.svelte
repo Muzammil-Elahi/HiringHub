@@ -35,11 +35,10 @@
 
 		// Listen for auth changes
 		const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-			console.log("Auth change event:", event);
 			// Update auth store first
 			authStore.setSession(session);
 			// Then handle user profile
-			_handleAuthChange(event, session);
+			await _handleAuthChange(event, session);
 		});
 
 		// Cleanup listener on component destroy
@@ -50,7 +49,6 @@
 
 	// Helper function to handle auth state changes and fetch profile
 	async function _handleAuthChange(event: AuthChangeEvent, session: Session | null) {
-		console.log('Handling Auth event:', event, session);
 		if (session && session.user) {
 			// User is logged in, fetch profile if not already loaded
 			if (!$userStore.profile || $userStore.profile.user_id !== session.user.id) {
@@ -70,27 +68,26 @@
 							user: session.user,
 							profile: null
 						});
-					} else {
-						console.log('Profile fetched:', profileData);
-						userStore.set({
-							loggedIn: true,
-							session: session,
-							user: session.user,
-							profile: profileData as Profile
-						});
-
-						// Only navigate on SIGNED_IN event, not on INITIAL_SESSION
-						if (event === 'SIGNED_IN') {
-							if (profileData?.account_type === 'job_seeker') {
-								await goto('/profile/job-seeker', { replaceState: true });
-							} else if (profileData?.account_type === 'hiring_manager') {
-								await goto('/profile/hiring-manager', { replaceState: true });
-							} else {
-								// Default case - don't navigate anywhere if profile type is unknown
-								console.log('Unknown account type, staying on current page');
-							}
-						}
+						return;
 					}
+					userStore.set({
+						loggedIn: true,
+						session: session,
+						user: session.user,
+						profile: profileData as Profile
+					});
+
+					console.log({profileData})
+					if (profileData?.account_type === 'job_seeker') {
+						return await goto('/profile/job-seeker', { replaceState: true });
+					} else if (profileData?.account_type === 'hiring_manager') {
+						return await goto('/profile/hiring-manager', { replaceState: true });
+					} else {
+						// Default case - don't navigate anywhere if profile type is unknown
+						console.log('Unknown account type, staying on current page');
+					}
+					
+					
 				} catch (e) {
 					console.error('Exception fetching profile:', e);
 					userStore.set({
@@ -104,7 +101,6 @@
 				}
 			} else {
 				// Profile already loaded, just update session/user info if needed
-				console.log("Profile already in store, updating session info");
 				userStore.update(current => ({
 					...current,
 					loggedIn: true,
@@ -114,7 +110,6 @@
 			}
 		} else {
 			// User is logged out
-			console.log("User logged out");
 			userStore.reset();
 			// Only redirect to login if on a protected route
 			const protectedRoutes = ['/jobs/post', '/profile/hiring-manager', '/profile/job-seeker'];
@@ -122,7 +117,7 @@
 				window.location.pathname.startsWith(route)
 			);
 			if (isProtectedRoute) {
-				await goto('/login', { replaceState: true });
+				return await goto('/login', { replaceState: true });
 			}
 		}
 	}
@@ -153,12 +148,6 @@
 			: $userStore.loggedIn 
 				? '/profile' // Changed: Don't default to any specific profile type
 				: '/login'; // Only go to login if not logged in
-
-	// ---> DEBUGGING START
-	$: console.log('User store for nav link:', $userStore);
-	$: console.log('Auth store state:', $authStore);
-	$: console.log('Calculated profileLink:', profileLink);
-	// ---> DEBUGGING END
 
 	$: jobBoardLink = '/jobs/board'; // Updated to a more consistent route pattern
 	$: postJobLink = '/jobs/post'; // Updated path to match our new route

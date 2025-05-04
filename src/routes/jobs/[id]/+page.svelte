@@ -2,6 +2,8 @@
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabaseClient';
   import userStore from '$lib/stores/userStore';
+  import { onMount } from 'svelte';
+  import { calculateMatchPercentage, extractResumeText } from '$lib/utils/matchingAlgorithm';
 
   // Get data from page load
   export let data;
@@ -16,6 +18,46 @@
     reviewed: 0,
     rejected: 0
   };
+  
+  // Match percentage calculation
+  let matchPercentage: number | null = null;
+  let resumeLoading = false;
+  let resumeLoadError = '';
+  
+  // Calculate match percentage for current job
+  async function calculateJobMatch() {
+    if (!$userStore.loggedIn || !$userStore.profile || $userStore.profile.account_type !== 'job_seeker') {
+      return;
+    }
+    
+    const resumeUrl = $userStore.profile.resume_url;
+    if (!resumeUrl) {
+      resumeLoadError = 'No resume found. Upload a resume in your profile to see job match percentage.';
+      return;
+    }
+    
+    resumeLoading = true;
+    resumeLoadError = '';
+    
+    try {
+      // Extract text from resume
+      const resumeText = await extractResumeText(resumeUrl);
+      
+      if (!resumeText) {
+        resumeLoadError = 'Could not extract text from resume.';
+        return;
+      }
+      
+      // Calculate match percentage
+      matchPercentage = calculateMatchPercentage(resumeText, job);
+      
+    } catch (error) {
+      console.error('Error calculating job match:', error);
+      resumeLoadError = 'Error calculating job match';
+    } finally {
+      resumeLoading = false;
+    }
+  }
   
   // Load application stats if user is the hiring manager
   async function loadApplicationStats() {
@@ -196,10 +238,17 @@
     ? '/profile/hiring-manager/jobs'
     : '/jobs/board';
 
-  // Load application stats on mount if user is hiring manager
-  $: if (job && $userStore.user?.id === job.hiring_manager_id) {
-    loadApplicationStats();
-  }
+  onMount(() => {
+    // Load application stats for hiring managers
+    if (job && $userStore.user?.id === job.hiring_manager_id) {
+      loadApplicationStats();
+    }
+    
+    // Calculate match for job seekers
+    if (job && $userStore.profile?.account_type === 'job_seeker') {
+      calculateJobMatch();
+    }
+  });
 </script>
 
 <div class="container job-detail-page">
@@ -231,13 +280,39 @@
         {/if}
       </div>
       
-      {#if $userStore.loggedIn && $userStore.profile?.account_type === 'job_seeker'}
-        <button class="apply-btn" on:click={applyToJob} disabled={loading}>
-          {loading ? 'Submitting...' : '1-Click Apply'}
-        </button>
-      {:else if !$userStore.loggedIn}
-        <a href="/login" class="login-btn">Log in to Apply</a>
-      {/if}
+      <div class="header-actions">
+        {#if $userStore.loggedIn && $userStore.profile?.account_type === 'job_seeker'}
+          <!-- Match Percentage for job seekers -->
+          {#if matchPercentage !== null}
+            <div class="match-percentage-container">
+              <div class="match-percentage 
+                {matchPercentage >= 70 ? 'high-match' : 
+                 matchPercentage >= 40 ? 'medium-match' : 'low-match'}">
+                <span class="match-value">{matchPercentage}%</span>
+                <span class="match-label">Match</span>
+              </div>
+            </div>
+          {:else if resumeLoading}
+            <div class="match-percentage-container loading">
+              <div class="match-percentage">
+                <span class="match-label">Calculating match...</span>
+              </div>
+            </div>
+          {:else if resumeLoadError}
+            <div class="match-percentage-container error">
+              <div class="match-percentage">
+                <span class="match-label">{resumeLoadError}</span>
+              </div>
+            </div>
+          {/if}
+        
+          <button class="apply-btn" on:click={applyToJob} disabled={loading}>
+            {loading ? 'Submitting...' : '1-Click Apply'}
+          </button>
+        {:else if !$userStore.loggedIn}
+          <a href="/login" class="login-btn">Log in to Apply</a>
+        {/if}
+      </div>
     </div>
     
     <div class="job-content">
@@ -340,6 +415,16 @@
           <div class="action-card">
             <h3>Interested in this job?</h3>
             {#if $userStore.loggedIn && $userStore.profile?.account_type === 'job_seeker'}
+              <!-- Match info card if user is job seeker -->
+              {#if matchPercentage !== null}
+                <div class="match-info">
+                  <p class="match-explanation">
+                    <strong>Your Match Score: {matchPercentage}%</strong><br>
+                    This score is calculated based on how well your resume matches the job requirements and skills.
+                  </p>
+                </div>
+              {/if}
+              
               <button class="apply-btn full-width" on:click={applyToJob} disabled={loading}>
                 {loading ? 'Submitting...' : '1-Click Apply'}
               </button>
@@ -433,6 +518,84 @@
     color: var(--error-text-color, #b91c1c);
   }
   
+  .header-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--spacing-sm);
+  }
+  
+  /* Match percentage styles */
+  .match-percentage-container {
+    margin-bottom: var(--spacing-sm);
+  }
+  
+  .match-percentage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background-color: #e5e7eb; /* Default background */
+    color: #4b5563; /* Default text color */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .match-percentage.high-match {
+    background-color: #10b981; /* Green */
+    color: white;
+  }
+  
+  .match-percentage.medium-match {
+    background-color: #f59e0b; /* Amber */
+    color: white;
+  }
+  
+  .match-percentage.low-match {
+    background-color: #ef4444; /* Red */
+    color: white;
+  }
+  
+  .match-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  
+  .match-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+  }
+  
+  .match-percentage-container.loading .match-percentage,
+  .match-percentage-container.error .match-percentage {
+    width: auto;
+    height: auto;
+    border-radius: var(--border-radius);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background-color: var(--surface-secondary-color, #f3f4f6);
+  }
+  
+  .match-percentage-container.error .match-percentage {
+    color: var(--error-text-color, #b91c1c);
+  }
+  
+  .match-info {
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-sm);
+    background-color: var(--surface-secondary-color, #f3f4f6);
+    border-radius: var(--border-radius);
+    font-size: 0.875rem;
+  }
+  
+  .match-explanation {
+    margin: 0;
+    line-height: 1.5;
+  }
+  
   .apply-btn,
   .login-btn {
     padding: var(--spacing-sm) var(--spacing-lg);
@@ -506,10 +669,16 @@
       flex-direction: column;
     }
     
-    .job-header .apply-btn,
-    .job-header .login-btn {
+    .header-actions {
+      flex-direction: column;
+      align-items: stretch;
       margin-top: var(--spacing-md);
-      width: 100%;
+    }
+    
+    .match-percentage-container {
+      display: flex;
+      justify-content: center;
+      margin-bottom: var(--spacing-md);
     }
   }
   

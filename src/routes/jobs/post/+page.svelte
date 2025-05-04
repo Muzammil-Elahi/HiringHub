@@ -22,14 +22,6 @@
   let messageType: 'success' | 'error' = 'error';
   let skillsInputError = '';
 
-  // Load hiring manager's company profile data on mount
-  onMount(() => {
-    if ($userStore.profile) {
-      company_name = $userStore.profile.company_name || '';
-      location = $userStore.profile.location || '';
-    }
-  });
-  
   // Manage skills input
   function addSkill() {
     skills = [...skills, ''];
@@ -239,7 +231,7 @@
           required
           disabled={loading}
         />
-        <small>Pre-filled from your profile. Edit if needed for this specific job.</small>
+        <small>Enter the company name for this job posting</small>
       </div>
       
       <div class="form-group">

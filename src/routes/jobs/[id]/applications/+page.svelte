@@ -3,14 +3,24 @@
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabaseClient';
   import userStore from '$lib/stores/userStore';
+  import { calculateMatchPercentage, extractResumeText } from '$lib/utils/matchingAlgorithm';
 
   export let data;
   let job = data.job || {};
   
   // Applications state
   let applications: any[] = [];
+  let sortedApplications: any[] = [];
   let loading = true;
   let error = '';
+  
+  // Sorting options
+  let sortOption = 'date'; // Default sort by application date
+  let sortOrder = 'desc'; // Default descending order (newest first)
+  
+  // Match calculation state
+  let calculatingMatches = false;
+  let matchesCalculated = false;
 
   // Fetch applications for this job
   async function fetchApplications() {
@@ -47,12 +57,106 @@
       if (fetchError) throw fetchError;
       
       applications = applicationData || [];
+      sortedApplications = [...applications];
+      
+      // Begin calculating match percentages
+      if (applications.length > 0) {
+        calculateMatchPercentages();
+      }
     } catch (err: any) {
       console.error('Error fetching applications:', err);
       error = `Failed to load applications: ${err.message}`;
     } finally {
       loading = false;
     }
+  }
+  
+  // Calculate match percentages for all applications
+  async function calculateMatchPercentages() {
+    calculatingMatches = true;
+    
+    try {
+      for (const application of applications) {
+        const resumeUrl = application.resume_snapshot_url || application.profiles?.resume_url;
+        
+        if (resumeUrl) {
+          try {
+            // Extract text from the resume
+            const resumeText = await extractResumeText(resumeUrl);
+            
+            if (resumeText) {
+              // Calculate match percentage
+              const matchScore = calculateMatchPercentage(resumeText, job);
+              
+              // Add match score to the application object
+              application.matchPercentage = matchScore;
+            } else {
+              application.matchPercentage = 0;
+              application.matchError = "Couldn't extract resume text";
+            }
+          } catch (err) {
+            console.error("Error calculating match for applicant:", application.profiles?.full_name, err);
+            application.matchPercentage = 0;
+            application.matchError = "Error calculating match";
+          }
+        } else {
+          application.matchPercentage = 0;
+          application.matchError = "No resume available";
+        }
+      }
+      
+      matchesCalculated = true;
+      applySort(); // Re-sort after calculating matches
+      
+    } catch (err) {
+      console.error("Error in match calculation process:", err);
+    } finally {
+      calculatingMatches = false;
+    }
+  }
+  
+  // Apply sorting to applications
+  function applySort() {
+    sortedApplications = [...applications].sort((a, b) => {
+      if (sortOption === 'match') {
+        // Sort by match percentage
+        const matchA = a.matchPercentage || 0;
+        const matchB = b.matchPercentage || 0;
+        return sortOrder === 'desc' ? matchB - matchA : matchA - matchB;
+      } else if (sortOption === 'name') {
+        // Sort by applicant name
+        const nameA = a.profiles?.full_name || '';
+        const nameB = b.profiles?.full_name || '';
+        return sortOrder === 'desc' 
+          ? nameB.localeCompare(nameA) 
+          : nameA.localeCompare(nameB);
+      } else if (sortOption === 'status') {
+        // Sort by application status
+        const statusA = a.status || '';
+        const statusB = b.status || '';
+        return sortOrder === 'desc' 
+          ? statusB.localeCompare(statusA) 
+          : statusA.localeCompare(statusB);
+      } else {
+        // Default sort by date
+        const dateA = new Date(a.application_date).getTime();
+        const dateB = new Date(b.application_date).getTime();
+        return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+      }
+    });
+  }
+  
+  // Handle sort option change
+  function handleSortChange(option: string) {
+    if (sortOption === option) {
+      // Toggle sort order if clicking the same option
+      sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
+    } else {
+      // Set new sort option with default desc order
+      sortOption = option;
+      sortOrder = 'desc';
+    }
+    applySort();
   }
 
   // Handle application status update
@@ -68,6 +172,11 @@
 
       // Update local state
       applications = applications.map(app => 
+        app.id === applicationId ? { ...app, status: newStatus } : app
+      );
+      
+      // Update sorted applications too
+      sortedApplications = sortedApplications.map(app => 
         app.id === applicationId ? { ...app, status: newStatus } : app
       );
 
@@ -106,6 +215,17 @@
     
     return '';
   }
+  
+  // Get match score color class
+  function getMatchClass(score: number): string {
+    if (score >= 70) {
+      return 'match-high';
+    } else if (score >= 40) {
+      return 'match-medium';
+    } else {
+      return 'match-low';
+    }
+  }
 
   // View applicant profile
   function viewApplicantProfile(userId: string) {
@@ -138,11 +258,48 @@
     </div>
   {:else}
     <div class="application-stats">
-      <p>Total applications: <strong>{applications.length}</strong></p>
+      <div class="stats-info">
+        <p>Total applications: <strong>{applications.length}</strong></p>
+        
+        {#if calculatingMatches}
+          <p class="calculating-note">Calculating match scores...</p>
+        {/if}
+      </div>
+      
+      <div class="sort-controls">
+        <span class="sort-label">Sort by:</span>
+        <div class="sort-buttons">
+          <button 
+            class="sort-btn {sortOption === 'date' ? 'active' : ''}"
+            on:click={() => handleSortChange('date')}
+          >
+            Date {sortOption === 'date' ? (sortOrder === 'desc' ? '↓' : '↑') : ''}
+          </button>
+          <button 
+            class="sort-btn {sortOption === 'match' ? 'active' : ''}"
+            on:click={() => handleSortChange('match')}
+            disabled={!matchesCalculated}
+          >
+            Match % {sortOption === 'match' ? (sortOrder === 'desc' ? '↓' : '↑') : ''}
+          </button>
+          <button 
+            class="sort-btn {sortOption === 'name' ? 'active' : ''}"
+            on:click={() => handleSortChange('name')}
+          >
+            Name {sortOption === 'name' ? (sortOrder === 'desc' ? '↓' : '↑') : ''}
+          </button>
+          <button 
+            class="sort-btn {sortOption === 'status' ? 'active' : ''}"
+            on:click={() => handleSortChange('status')}
+          >
+            Status {sortOption === 'status' ? (sortOrder === 'desc' ? '↓' : '↑') : ''}
+          </button>
+        </div>
+      </div>
     </div>
     
     <div class="applications-list">
-      {#each applications as application}
+      {#each sortedApplications as application}
         <div class="application-card">
           <div class="application-header">
             <div class="applicant-info">
@@ -166,6 +323,18 @@
               <span class={`application-status ${getStatusClass(application.status)}`}>
                 {application.status}
               </span>
+              
+              <!-- Match percentage display -->
+              {#if application.matchPercentage !== undefined}
+                <div class={`match-percentage ${getMatchClass(application.matchPercentage)}`}>
+                  <div class="match-value">{application.matchPercentage}%</div>
+                  <div class="match-label">match</div>
+                </div>
+              {:else if application.matchError}
+                <div class="match-error">{application.matchError}</div>
+              {:else if calculatingMatches}
+                <div class="match-calculating">Calculating...</div>
+              {/if}
             </div>
           </div>
           
@@ -193,11 +362,10 @@
             </div>
             
             <div class="action-buttons">
-              {#if application.resume_snapshot_url}
-                <a href={application.resume_snapshot_url} target="_blank" class="btn-secondary">View Resume</a>
-              {/if}
               {#if application.profiles?.resume_url}
-                <a href={application.profiles.resume_url} target="_blank" class="btn-secondary">View Latest Resume</a>
+                <a href={application.profiles.resume_url} target="_blank" class="btn-secondary">View Resume</a>
+              {:else if application.resume_snapshot_url}
+                <a href={application.resume_snapshot_url} target="_blank" class="btn-secondary">View Resume</a>
               {/if}
               <button 
                 class="btn-primary" 
@@ -244,6 +412,60 @@
     padding: var(--spacing-sm) var(--spacing-md);
     background-color: var(--surface-secondary-color, #f3f4f6);
     border-radius: var(--border-radius);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+  }
+  
+  .calculating-note {
+    font-size: 0.875rem;
+    color: var(--primary-color);
+    font-style: italic;
+    margin: 0;
+  }
+  
+  .sort-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+  }
+  
+  .sort-label {
+    font-size: 0.875rem;
+    color: var(--text-muted-color);
+  }
+  
+  .sort-buttons {
+    display: flex;
+    gap: var(--spacing-xs);
+  }
+  
+  .sort-btn {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: 0.75rem;
+    background-color: var(--background-color, white);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    color: var(--text-color);
+  }
+  
+  .sort-btn:hover:not(:disabled) {
+    background-color: var(--background-hover-color, #f9fafb);
+    border-color: var(--primary-color);
+  }
+  
+  .sort-btn.active {
+    background-color: var(--primary-color);
+    color: var(--primary-contrast-color);
+    border-color: var(--primary-color);
+  }
+  
+  .sort-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   
   .applications-list {
@@ -311,6 +533,64 @@
     padding: 0.25rem 0.75rem;
     border-radius: 9999px;
     font-weight: 500;
+  }
+  
+  /* Match percentage styles */
+  .match-percentage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--border-radius);
+    padding: 0.25rem 0.5rem;
+    margin-top: var(--spacing-xs);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    min-width: 60px;
+  }
+  
+  .match-value {
+    font-size: 1rem;
+    line-height: 1;
+  }
+  
+  .match-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    opacity: 0.8;
+  }
+  
+  .match-high {
+    background-color: #10b981; /* Green */
+    color: white;
+  }
+  
+  .match-medium {
+    background-color: #f59e0b; /* Amber */
+    color: white;
+  }
+  
+  .match-low {
+    background-color: #ef4444; /* Red */
+    color: white;
+  }
+  
+  .match-error, .match-calculating {
+    font-size: 0.75rem;
+    margin-top: var(--spacing-xs);
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--border-radius);
+  }
+  
+  .match-error {
+    color: var(--error-text-color);
+    background-color: var(--error-bg-color);
+  }
+  
+  .match-calculating {
+    color: var(--text-muted-color);
+    background-color: var(--surface-secondary-color);
+    font-style: italic;
   }
   
   .status-submitted {
@@ -449,6 +729,23 @@
   }
   
   @media (max-width: 768px) {
+    .application-stats {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    
+    .sort-controls {
+      flex-direction: column;
+      align-items: flex-start;
+      width: 100%;
+    }
+    
+    .sort-buttons {
+      width: 100%;
+      overflow-x: auto;
+      padding-bottom: var(--spacing-xs);
+    }
+    
     .application-header,
     .application-actions {
       flex-direction: column;

@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabaseClient';
   import userStore from '$lib/stores/userStore';
+  import { calculateMatchPercentage, extractResumeText } from '$lib/utils/matchingAlgorithm';
 
   // Get server-loaded data
   export let data;
@@ -20,6 +21,13 @@
   let minSalary: number | null = null;
   let locations: string[] = [];
   let jobTypes: string[] = [];
+  
+  // Match sorting
+  let sortByMatch = false;
+  let resumeText = '';
+  let matchPercentages: Record<string, number> = {}; // Job ID to match percentage
+  let resumeLoading = false;
+  let resumeLoadError = '';
 
   // Initialize filters from loaded jobs
   function initializeFilters() {
@@ -34,6 +42,57 @@
     
     locations = Array.from(uniqueLocations);
     jobTypes = Array.from(uniqueJobTypes);
+  }
+
+  // Load resume text and calculate match percentages
+  async function loadResumeAndCalculateMatches() {
+    if (!$userStore.loggedIn || !$userStore.profile || $userStore.profile.account_type !== 'job_seeker') {
+      return;
+    }
+    
+    const resumeUrl = $userStore.profile.resume_url;
+    if (!resumeUrl) {
+      resumeLoadError = 'No resume found. Please upload a resume in your profile to see job matches.';
+      return;
+    }
+    
+    resumeLoading = true;
+    resumeLoadError = '';
+    
+    try {
+      // Extract text from resume
+      resumeText = await extractResumeText(resumeUrl);
+      
+      if (!resumeText) {
+        resumeLoadError = 'Could not extract text from resume. Match percentages will not be available.';
+        return;
+      }
+      
+      // Calculate match percentages for all jobs
+      jobs.forEach(job => {
+        matchPercentages[job.id] = calculateMatchPercentage(resumeText, job);
+      });
+      
+      // If sorting by match is enabled, sort the filtered jobs
+      if (sortByMatch) {
+        sortJobsByMatch();
+      }
+      
+    } catch (error) {
+      console.error('Error loading resume or calculating matches:', error);
+      resumeLoadError = 'Error calculating job matches';
+    } finally {
+      resumeLoading = false;
+    }
+  }
+  
+  // Sort jobs by match percentage
+  function sortJobsByMatch() {
+    filteredJobs = [...filteredJobs].sort((a, b) => {
+      const matchA = matchPercentages[a.id] || 0;
+      const matchB = matchPercentages[b.id] || 0;
+      return matchB - matchA; // Sort by highest match first
+    });
   }
 
   // Apply filters to jobs
@@ -60,6 +119,11 @@
       
       return matchesSearch && matchesJobType && matchesLocation && matchesSalary;
     });
+    
+    // Sort by match if enabled
+    if (sortByMatch) {
+      sortJobsByMatch();
+    }
   }
 
   // Handle filter changes
@@ -76,7 +140,22 @@
     selectedJobType = '';
     selectedLocation = '';
     minSalary = null;
+    sortByMatch = false;
     filteredJobs = [...jobs];
+  }
+  
+  // Toggle sort by match
+  function toggleSortByMatch() {
+    sortByMatch = !sortByMatch;
+    
+    if (sortByMatch) {
+      sortJobsByMatch();
+    } else {
+      // Reset to default sort (latest first)
+      filteredJobs = [...filteredJobs].sort((a, b) => {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+    }
   }
 
   // Apply to job
@@ -194,6 +273,7 @@
 
   onMount(() => {
     initializeFilters();
+    loadResumeAndCalculateMatches();
   });
 </script>
 
@@ -249,9 +329,36 @@
         />
       </div>
       
+      <!-- Match Sorting - Only show when user has a resume and is a job seeker -->
+      {#if $userStore.loggedIn && $userStore.profile?.account_type === 'job_seeker' && $userStore.profile?.resume_url}
+        <div class="filter-group">
+          <label for="match-filter">Job Match</label>
+          <div class="sort-match-container">
+            <input 
+              id="match-filter" 
+              type="checkbox" 
+              bind:checked={sortByMatch} 
+              on:change={toggleSortByMatch}
+            />
+            <label for="match-filter" class="inline-label">Sort by best match</label>
+          </div>
+          {#if resumeLoading}
+            <small>Calculating matches...</small>
+          {/if}
+        </div>
+      {/if}
+      
       <!-- Reset filters button -->
       <button class="reset-btn" on:click={resetFilters}>Reset Filters</button>
     </div>
+    
+    <!-- Show message if resume match is not available but user is a job seeker -->
+    {#if $userStore.loggedIn && $userStore.profile?.account_type === 'job_seeker' && resumeLoadError}
+      <div class="resume-match-message">
+        <p>{resumeLoadError}</p>
+        <a href="/profile/job-seeker" class="resume-link">Upload Resume</a>
+      </div>
+    {/if}
   </div>
   
   <!-- Results section -->
@@ -294,6 +401,13 @@
             <span class="job-type">{job.job_type}</span>
             {#if job.salary_min || job.salary_max}
               <span class="job-salary">{formatSalary(job.salary_min, job.salary_max, job.salary_currency)}</span>
+            {/if}
+            
+            <!-- Match percentage badge - only show if match is calculated -->
+            {#if $userStore.loggedIn && $userStore.profile?.account_type === 'job_seeker' && matchPercentages[job.id] !== undefined}
+              <span class="match-percentage" class:high-match={matchPercentages[job.id] >= 70} class:medium-match={matchPercentages[job.id] >= 40 && matchPercentages[job.id] < 70} class:low-match={matchPercentages[job.id] < 40}>
+                {matchPercentages[job.id]}% Match
+              </span>
             {/if}
           </div>
           
@@ -391,6 +505,17 @@
     color: var(--text-muted-color);
   }
   
+  .inline-label {
+    display: inline-flex;
+    margin-left: var(--spacing-xs);
+    font-weight: normal;
+  }
+  
+  .sort-match-container {
+    display: flex;
+    align-items: center;
+  }
+  
   .filter-group select,
   .filter-group input {
     padding: var(--spacing-sm);
@@ -398,6 +523,46 @@
     border-radius: var(--border-radius);
     font-size: var(--font-size-base);
     background-color: var(--surface-color);
+  }
+  
+  .filter-group input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+  }
+  
+  .filter-group small {
+    margin-top: var(--spacing-xs);
+    font-size: 0.75rem;
+    color: var(--text-muted-color);
+  }
+  
+  .resume-match-message {
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-sm);
+    background-color: var(--surface-secondary-color, #f3f4f6);
+    border-radius: var(--border-radius);
+    font-size: 0.875rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .resume-match-message p {
+    margin: 0;
+    color: var(--text-muted-color);
+  }
+  
+  .resume-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--primary-color);
+    border-radius: var(--border-radius);
+  }
+  
+  .resume-link:hover {
+    background-color: var(--primary-color-light, #e0f2fe);
   }
   
   .reset-btn {
@@ -507,6 +672,38 @@
     font-weight: 500;
     padding: var(--spacing-xs) var(--spacing-sm);
     border-radius: 9999px;
+  }
+  
+  /* Match percentage badge */
+  .match-percentage {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: 9999px;
+    background-color: #e5e7eb; /* Default background */
+    color: #4b5563; /* Default text color */
+  }
+  
+  .match-percentage.high-match {
+    background-color: #10b981; /* Green */
+    color: white;
+  }
+  
+  .match-percentage.medium-match {
+    background-color: #f59e0b; /* Amber */
+    color: white;
+  }
+  
+  .match-percentage.low-match {
+    background-color: #ef4444; /* Red */
+    color: white;
+  }
+  
+  .match-percentage::before {
+    content: "📊";
+    margin-right: 0.25rem;
   }
   
   .job-skills {
@@ -629,6 +826,12 @@
     
     .job-actions {
       flex-direction: column;
+    }
+    
+    .resume-match-message {
+      flex-direction: column;
+      gap: var(--spacing-sm);
+      text-align: center;
     }
   }
 </style> 
