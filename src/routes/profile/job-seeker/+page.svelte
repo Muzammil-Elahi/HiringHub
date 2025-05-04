@@ -577,37 +577,6 @@
             <p>Uploading resume...</p>
          {/if}
         <small>Upload a new resume (PDF only, max 5MB). Save profile to update link.</small>
-        <button type="button" class="btn-text-small" 
-                on:click={async () => {
-                  message = 'Checking storage access...';
-                  messageType = 'info';
-                  try {
-                    // Just verify the bucket is accessible, don't try to create it
-                    const { data: listResult, error: listError } = await supabase.storage
-                      .from('resumes')
-                      .list(get(userStore).user?.id || '', {
-                        limit: 1,
-                        sortBy: { column: 'name', order: 'desc' }
-                      });
-                      
-                    if (listError) {
-                      console.error('Error checking resumes bucket:', listError);
-                      message = `Storage access error: ${listError.message}`;
-                      messageType = 'error';
-                      return;
-                    }
-                    
-                    message = 'Resume storage is accessible. You can upload your resume.';
-                    messageType = 'success';
-                  } catch (err: any) {
-                    console.error('Storage check failed:', err);
-                    message = `Storage check failed: ${err.message}`;
-                    messageType = 'error';
-                  }
-                }}
-              >
-                Check Storage Access
-              </button>
       </div>
 
         <div class="form-actions">
