@@ -1,6 +1,8 @@
 import { supabase } from '$lib/supabaseClient';
 import type { LayoutLoad } from './$types';
 
+export const prerender = false;
+
 export const load: LayoutLoad = async ({ fetch, depends }) => {
   // Trigger dependency invalidation on auth state change
   depends('app:auth');

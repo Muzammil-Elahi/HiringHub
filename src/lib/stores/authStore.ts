@@ -30,79 +30,39 @@ function createAuthStore() {
   return {
     subscribe,
     
-    // Initialize auth state from stored tokens or session
-    initialize: async () => {
-      update(state => ({ ...state, loading: true }));
-      
-      // Try to get session from Supabase
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session) {
-        // We have a valid session
-        set({
-          isAuthenticated: true,
-          session,
-          accessToken: session.access_token,
-          refreshToken: session.refresh_token,
-          userId: session.user?.id || null,
-          authEmail: session.user?.email || null,
-          loading: false
-        });
+    // Quick auth check using stored token
+    checkAuth: async () => {
+      console.log('Checking auth method 1');
+      const accessToken = browser ? localStorage.getItem('accessToken') : null;
+      if (!accessToken) {
+        set({ ...initialState, loading: false });
+        return false;
+      }
+
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser(accessToken);
         
-        // Update localStorage
-        if (browser) {
-          localStorage.setItem('accessToken', session.access_token);
-          localStorage.setItem('refreshToken', session.refresh_token);
-        }
-      } else {
-        // Check if we have tokens in localStorage
-        const accessToken = browser ? localStorage.getItem('accessToken') : null;
-        const refreshToken = browser ? localStorage.getItem('refreshToken') : null;
-        
-        if (accessToken && refreshToken) {
-          // Try to refresh the session
-          try {
-            const { data, error } = await supabase.auth.refreshSession({
-              refresh_token: refreshToken,
-            });
-            
-            if (error) throw error;
-            
+        if (user && !userError) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
             set({
               isAuthenticated: true,
-              session: data.session,
-              accessToken: data.session?.access_token || null,
-              refreshToken: data.session?.refresh_token || null,
-              userId: data.session?.user?.id || null,
-              authEmail: data.session?.user?.email || null,
+              session,
+              accessToken: session.access_token,
+              refreshToken: session.refresh_token,
+              userId: session.user?.id || null,
+              authEmail: session.user?.email || null,
               loading: false
             });
-            
-            // Update localStorage with new tokens
-            if (browser && data.session) {
-              localStorage.setItem('accessToken', data.session.access_token);
-              localStorage.setItem('refreshToken', data.session.refresh_token);
-            }
-          } catch (error) {
-            console.error('Failed to refresh session:', error);
-            // Clear invalid tokens
-            if (browser) {
-              localStorage.removeItem('accessToken');
-              localStorage.removeItem('refreshToken');
-            }
-            set({
-              ...initialState,
-              loading: false
-            });
+            return true;
           }
-        } else {
-          // No tokens, not authenticated
-          set({
-            ...initialState,
-            loading: false
-          });
         }
+      } catch (error) {
+        console.error('Auth check error:', error);
       }
+
+      set({ ...initialState, loading: false });
+      return false;
     },
     
     // Set auth state from login/session
