@@ -8,6 +8,8 @@ export interface AuthState {
   session: AuthSession | null;
   accessToken: string | null;
   refreshToken: string | null;
+  userId: string | null;
+  authEmail: string | null;
   loading: boolean;
 }
 
@@ -17,6 +19,8 @@ const initialState: AuthState = {
   session: null,
   accessToken: browser ? localStorage.getItem('accessToken') : null,
   refreshToken: browser ? localStorage.getItem('refreshToken') : null,
+  userId: null,
+  authEmail: null,
   loading: true
 };
 
@@ -40,6 +44,8 @@ function createAuthStore() {
           session,
           accessToken: session.access_token,
           refreshToken: session.refresh_token,
+          userId: session.user?.id || null,
+          authEmail: session.user?.email || null,
           loading: false
         });
         
@@ -67,6 +73,8 @@ function createAuthStore() {
               session: data.session,
               accessToken: data.session?.access_token || null,
               refreshToken: data.session?.refresh_token || null,
+              userId: data.session?.user?.id || null,
+              authEmail: data.session?.user?.email || null,
               loading: false
             });
             
@@ -105,6 +113,8 @@ function createAuthStore() {
           session,
           accessToken: session.access_token,
           refreshToken: session.refresh_token,
+          userId: session.user?.id || null,
+          authEmail: session.user?.email || null,
           loading: false
         });
         

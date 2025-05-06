@@ -7,10 +7,14 @@
 <script lang="ts">
 	// Minimal script, can be removed if not needed.
 	import { browser } from '$app/environment';
+	import authStore from '$lib/stores/authStore'; // Import the new auth store
 
 	if (browser) {
 		// Client-side only code that needs to run *outside* the layout, if any.
+		// Initialize auth store (this will handle token validation)
+		authStore.initialize(); // <--- ALREADY HERE
 	}
+	
 </script>
 
 <!-- Base structure is handled by +layout.svelte and +page.svelte -->
