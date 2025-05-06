@@ -79,6 +79,14 @@
     if (currentChat && newMsg.chat_id === currentChat.id) {
       messages = [...messages, newMsg];
       
+      // Auto scroll to bottom when new message arrives
+      setTimeout(() => {
+        const messagesContainer = document.querySelector('.messages-wrapper');
+        if (messagesContainer) {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+      }, 50);
+      
       // Mark as read if not sent by current user
       if (newMsg.sender_id !== $userStore.user?.id) {
         await markMessageAsRead(newMsg.id);
@@ -198,49 +206,54 @@
   }
   
   // Load a specific chat and its messages
-  async function loadChat(id: string) {
-    debug(`Loading chat: ${id}`);
+  async function loadChat(chatId: string) {
+    if (!chatId) return;
+    
+    debug(`Loading chat ${chatId}`);
+    
+    // Set loading state
     isLoadingMessages = true;
+    error = '';
+    
+    // Update URL to reflect selected chat
+    const url = new URL(window.location.href);
+    url.searchParams.set('id', chatId);
+    history.replaceState(null, '', url.toString());
     
     try {
-      // Get chat details
-      const { data: chatData, error: chatError } = await supabase
-        .from('chats')
-        .select(`
-          *,
-          hiring_manager:hiring_manager_id (user_id, full_name, avatar_url),
-          job_seeker:job_seeker_id (user_id, full_name, avatar_url),
-          job:job_id (id, title, company_name)
-        `)
-        .eq('id', id)
-        .single();
+      // Find selected chat from the list
+      const selectedChat = chats.find(chat => chat.id === chatId);
+      if (!selectedChat) {
+        throw new Error('Chat not found');
+      }
       
-      if (chatError) throw chatError;
+      // Set current chat
+      currentChat = selectedChat;
       
-      currentChat = chatData;
-      debug(`Loaded chat: ${JSON.stringify(currentChat)}`);
-      
-      // Get messages for this chat
-      const { data: messagesData, error: messagesError } = await supabase
+      // Fetch messages for this chat
+      const { data: messageData, error: messageError } = await supabase
         .from('messages')
         .select('*')
-        .eq('chat_id', id)
+        .eq('chat_id', chatId)
         .order('created_at', { ascending: true });
       
-      if (messagesError) throw messagesError;
+      if (messageError) throw messageError;
       
-      messages = messagesData || [];
-      debug(`Loaded ${messages.length} messages`);
+      messages = messageData || [];
+      debug(`Loaded ${messages.length} messages for chat ${chatId}`);
       
       // Mark unread messages as read
-      await markChatAsRead();
-      
-      // Update URL if needed
-      const url = new URL(window.location.href);
-      if (url.searchParams.get('id') !== id) {
-        url.searchParams.set('id', id);
-        history.replaceState(null, '', url.toString());
+      if (unreadCounts[chatId] > 0) {
+        await markChatAsRead();
       }
+      
+      // Auto scroll to bottom of messages
+      setTimeout(() => {
+        const messagesContainer = document.querySelector('.messages-wrapper');
+        if (messagesContainer) {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+      }, 100);
       
     } catch (err: any) {
       error = `Error loading chat: ${err.message}`;
@@ -351,6 +364,14 @@
       // Clear input
       newMessage = '';
       
+      // Scroll to bottom after sending
+      setTimeout(() => {
+        const messagesContainer = document.querySelector('.messages-wrapper');
+        if (messagesContainer) {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+      }, 50);
+      
     } catch (err: any) {
       error = `Error sending message: ${err.message}`;
       debug(`Error: ${error}`);
@@ -385,13 +406,15 @@
       return {
         name: chat.job_seeker?.full_name || 'Job Seeker',
         avatar: chat.job_seeker?.avatar_url,
-        initial: (chat.job_seeker?.full_name || 'J')[0]
+        initial: (chat.job_seeker?.full_name || 'J')[0],
+        userId: chat.job_seeker.user_id
       };
     } else {
       return {
         name: chat.hiring_manager?.full_name || 'Hiring Manager',
         avatar: chat.hiring_manager?.avatar_url,
-        initial: (chat.hiring_manager?.full_name || 'H')[0]
+        initial: (chat.hiring_manager?.full_name || 'H')[0],
+        userId: chat.hiring_manager.user_id
       };
     }
   }
@@ -425,6 +448,19 @@
     } else if (Notification.permission !== "denied") {
       Notification.requestPermission();
     }
+  }
+  
+  // View applicant profile (for hiring managers only)
+  function viewApplicantProfile(userId: string) {
+    if (isHiringManager && userId) {
+      goto(`/profile/job-seeker/${userId}`);
+    }
+  }
+  
+  // Handle messages container scroll (for implementing read receipts)
+  function handleMessagesScroll() {
+    // Can be used to implement "mark as read when scrolled into view" feature
+    // Currently just a placeholder for the scroll event
   }
 </script>
 
@@ -505,7 +541,7 @@
       <div class="no-chat-selected">
         <div class="no-chat-message">
           <h3>Select a conversation</h3>
-          <p>Choose a conversation from the list to view messages.</p>
+          <p>Choose a conversation from the list to start messaging.</p>
         </div>
       </div>
     {:else}
@@ -513,48 +549,61 @@
       {@const otherParticipant = getOtherParticipant(currentChat)}
       <div class="message-header">
         <div class="participant-info">
-          {#if otherParticipant.avatar}
-            <img src={otherParticipant.avatar} alt={otherParticipant.name} class="participant-avatar" />
-          {:else}
-            <div class="avatar-placeholder participant-avatar">{otherParticipant.initial}</div>
-          {/if}
+          <div class="participant-avatar">
+            {#if otherParticipant.avatar}
+              <img src={otherParticipant.avatar} alt={otherParticipant.name} />
+            {:else}
+              <div class="avatar-placeholder">{otherParticipant.initial}</div>
+            {/if}
+          </div>
           <div>
-            <h3>{otherParticipant.name}</h3>
-            <p class="job-title">{currentChat.job?.title || 'No job specified'}</p>
+            <!-- Make participant name clickable for hiring managers -->
+            {#if isHiringManager}
+              <h3 class="participant-name clickable" on:click={() => viewApplicantProfile(otherParticipant.userId)}>
+                {otherParticipant.name}
+              </h3>
+            {:else}
+              <h3>{otherParticipant.name}</h3>
+            {/if}
+            <!-- Show job title more prominently -->
+            {#if currentChat.job}
+              <p class="job-title">Regarding: <strong>{currentChat.job.title}</strong></p>
+              <p class="company-name">{currentChat.job.company_name || ''}</p>
+            {/if}
           </div>
         </div>
-        <div class="header-actions">
-          {#if currentChat.job}
-            <a href="/jobs/{currentChat.job.id}" class="view-job-link">View Job</a>
-          {/if}
-        </div>
+        
+        {#if currentChat.job}
+          <a href="/jobs/{currentChat.job.id}" class="view-job-link">
+            View Job
+          </a>
+        {/if}
       </div>
       
       <!-- Messages -->
-      <div class="messages-wrapper">
+      <div class="messages-wrapper" on:scroll={handleMessagesScroll}>
         {#if isLoadingMessages}
           <div class="loading-state">Loading messages...</div>
         {:else if messages.length === 0}
           <div class="empty-messages">
-            <p>No messages yet. Start the conversation!</p>
+            <p>No messages yet. Be the first to send a message!</p>
           </div>
         {:else}
           <div class="message-list">
             {#each messages as message}
-              <div class="message {message.sender_id === $userStore.user?.id ? 'sent' : 'received'}">
-                <div class="message-content">
-                  {message.content}
-                </div>
+              {@const isSent = message.sender_id === $userStore.user?.id}
+              <div class="message {isSent ? 'sent' : 'received'}">
+                <div class="message-content">{message.content}</div>
                 <div class="message-meta">
                   <span class="message-time">{formatMessageTime(message.created_at)}</span>
-                  {#if message.sender_id === $userStore.user?.id}
+                  {#if isSent}
                     <span class="message-status">
                       {#if message.read_at}
-                        <span class="status-read" title="Read at {new Date(message.read_at).toLocaleString()}">✓✓</span>
+                        <span class="status-read">Read</span>
                       {:else if message.delivered_at}
-                        <span class="status-delivered" title="Delivered at {new Date(message.delivered_at).toLocaleString()}">✓</span>
+                        <span class="status-delivered">Delivered</span>
                       {:else}
-                        <span class="status-sending">...</span>
+                        <span class="status-sending">Sent</span>
                       {/if}
                     </span>
                   {/if}
@@ -600,65 +649,72 @@
 
 <style>
   .messages-container {
-    display: grid;
-    grid-template-columns: 320px 1fr;
-    height: calc(100vh - 150px);
-    max-height: 800px;
-    margin: var(--spacing-lg) auto;
+    display: flex;
+    height: calc(100vh - 180px);
+    min-height: 500px;
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     overflow: hidden;
-    background-color: var(--surface-color);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   }
   
-  /* Chat list styles */
   .chat-list {
+    width: 300px;
     border-right: 1px solid var(--border-color);
-    overflow-y: auto;
+    background-color: var(--surface-color);
     display: flex;
     flex-direction: column;
-    background-color: var(--surface-secondary-color, #f3f4f6);
+    overflow: hidden; /* Remove overflow from container */
+  }
+  
+  .message-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0; /* Ensure flex item can shrink below content size */
+  }
+  
+  .messages-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-md);
+    background-color: var(--background-color, #fff);
+    min-height: 200px; /* Ensure there's always space for messages */
+  }
+  
+  .message-input-area {
+    display: flex;
+    padding: var(--spacing-md);
+    border-top: 1px solid var(--border-color);
+    background-color: var(--surface-color);
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
   }
   
   .chat-list-header {
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--border-color);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--spacing-md);
-    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
     background-color: var(--surface-color);
+    z-index: 5;
   }
   
   .chat-list-header h2 {
     margin: 0;
-    font-size: 1.2rem;
-  }
-  
-  .btn-new-chat {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: var(--primary-color);
-    color: white;
-    border: none;
-    cursor: pointer;
-    font-size: 1.2rem;
-    font-weight: bold;
-  }
-  
-  .btn-new-chat:hover {
-    background-color: var(--primary-color-dark);
+    font-size: 1.25rem;
   }
   
   .chat-items {
     list-style: none;
-    padding: 0;
     margin: 0;
+    padding: 0;
     overflow-y: auto;
+    flex: 1;
   }
   
   .chat-item {
@@ -752,13 +808,6 @@
     text-overflow: ellipsis;
   }
   
-  /* Message area styles */
-  .message-area {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-  }
-  
   .no-chat-selected {
     display: flex;
     align-items: center;
@@ -783,51 +832,86 @@
   }
   
   .message-header {
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--surface-color);
+    position: sticky;
+    top: 0;
+    z-index: 5;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--spacing-md) var(--spacing-lg);
-    border-bottom: 1px solid var(--border-color);
-    background-color: var(--surface-color);
   }
   
   .participant-info {
     display: flex;
     align-items: center;
+    gap: var(--spacing-sm);
   }
   
   .participant-avatar {
     width: 40px;
     height: 40px;
-    margin-right: var(--spacing-md);
+    border-radius: 50%;
+    overflow: hidden;
+    background-color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
   }
   
-  .participant-info h3 {
-    margin: 0;
-    font-size: 1.1rem;
+  .participant-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  
+  .avatar-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .participant-name.clickable {
+    cursor: pointer;
+    color: var(--primary-color);
+    transition: color 0.2s;
+  }
+  
+  .participant-name.clickable:hover {
+    text-decoration: underline;
+    color: var(--primary-color-dark);
   }
   
   .job-title {
-    margin: 0;
-    font-size: 0.875rem;
+    margin: 2px 0;
+    font-size: 0.9rem;
+    color: var(--primary-color);
+  }
+  
+  .company-name {
+    margin: 2px 0;
+    font-size: 0.8rem;
     color: var(--text-muted-color);
   }
   
   .view-job-link {
     color: var(--primary-color);
     text-decoration: none;
-    font-size: 0.875rem;
+    font-size: 0.9rem;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--primary-color);
+    border-radius: var(--border-radius);
+    transition: background-color 0.2s;
   }
   
   .view-job-link:hover {
-    text-decoration: underline;
-  }
-  
-  .messages-wrapper {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--spacing-md);
-    background-color: var(--background-color, #fff);
+    background-color: var(--primary-color-light, rgba(var(--primary-color-rgb), 0.1));
+    text-decoration: none;
   }
   
   .empty-messages {
@@ -900,13 +984,6 @@
     color: var(--text-muted-color);
   }
   
-  .message-input-area {
-    display: flex;
-    padding: var(--spacing-md);
-    border-top: 1px solid var(--border-color);
-    background-color: var(--surface-color);
-  }
-  
   .message-input {
     flex: 1;
     min-height: 50px;
@@ -936,6 +1013,7 @@
     font-weight: 500;
     align-self: flex-end;
     height: 40px;
+    min-width: 80px;
   }
   
   .send-button:hover:not(:disabled) {
@@ -1029,40 +1107,46 @@
     border-bottom: 1px solid #333;
   }
   
-  /* Responsive layout */
+  /* Mobile responsive adjustments */
   @media (max-width: 768px) {
     .messages-container {
-      grid-template-columns: 1fr;
-      height: calc(100vh - 100px);
+      flex-direction: column;
+      height: calc(100vh - 140px);
     }
     
     .chat-list {
-      position: fixed;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 85%;
-      max-width: 320px;
-      z-index: 100;
-      transform: translateX(-100%);
-      transition: transform 0.3s ease;
-    }
-    
-    .chat-list.active {
-      transform: translateX(0);
-    }
-    
-    .menu-toggle {
-      display: block;
-      position: absolute;
-      left: 10px;
-      top: 10px;
-      z-index: 101;
-    }
-    
-    .debug-panel {
       width: 100%;
-      max-width: 100%;
+      height: 40%;
+      min-height: 180px;
+      border-right: none;
+      border-bottom: 1px solid var(--border-color);
+    }
+    
+    .message-area {
+      height: 60%;
+      min-height: 250px;
+    }
+    
+    .messages-wrapper {
+      min-height: 150px;
+    }
+    
+    .message-input-area {
+      padding: var(--spacing-sm);
+    }
+    
+    .message-input {
+      min-height: 40px;
+      max-height: 80px;
+    }
+    
+    .send-button {
+      min-width: 60px;
+    }
+    
+    /* Ensure message content fits on smaller screens */
+    .message {
+      max-width: 85%;
     }
   }
   
@@ -1083,5 +1167,28 @@
   .self-message {
     font-style: italic;
     color: var(--text-light-color);
+  }
+  
+  .btn-new-chat {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 32px;
+    height: 32px;
+    background-color: var(--primary-color);
+    color: white;
+    border-radius: 50%;
+    text-decoration: none;
+    font-weight: bold;
+    transition: background-color 0.2s;
+  }
+  
+  .btn-new-chat:hover {
+    background-color: var(--primary-color-dark);
+  }
+  
+  .participant-info h3 {
+    margin: 0;
+    font-size: 1.1rem;
   }
 </style> 
