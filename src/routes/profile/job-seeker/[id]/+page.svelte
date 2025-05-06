@@ -46,6 +46,13 @@
             <p class="location"><i class="location-icon">📍</i> {jobSeekerProfile.location}</p>
           {/if}
           <p class="member-since">Member since: {formatDate(jobSeekerProfile.created_at)}</p>
+          
+          <!-- Add contact button for hiring managers -->
+          {#if $userStore.profile?.account_type === 'hiring_manager'}
+            <a href="/messages/new" class="contact-button">
+              <i class="message-icon">✉️</i> Contact Candidate
+            </a>
+          {/if}
         </div>
       </div>
 
@@ -330,6 +337,29 @@
     background-color: var(--error-bg-color, #fee2e2);
     color: var(--error-text-color, #b91c1c);
     border-color: var(--error-border-color, #fca5a5);
+  }
+  
+  .contact-button {
+    display: inline-flex;
+    align-items: center;
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-xs) var(--spacing-md);
+    background-color: var(--primary-color);
+    color: var(--primary-contrast-color);
+    text-decoration: none;
+    border-radius: var(--border-radius);
+    font-size: 0.95rem;
+    transition: background-color 0.2s;
+  }
+  
+  .contact-button:hover {
+    background-color: var(--primary-color-dark);
+    text-decoration: none;
+  }
+  
+  .message-icon {
+    margin-right: var(--spacing-xs);
+    font-style: normal;
   }
   
   @media (max-width: 768px) {

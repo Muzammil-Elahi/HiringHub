@@ -14,6 +14,46 @@
 
 	// State for profile fetching indicator (could be useful)
 	let profileLoading = false;
+	// State for unread messages count
+	let unreadMessagesCount = 0;
+
+	// Function to check for unread messages
+	async function checkUnreadMessages() {
+		if (!browser || !$userStore.loggedIn || !$userStore.user) return;
+		
+		try {
+			// Determine if user is a hiring manager or job seeker
+			const isHiringManager = $userStore.profile?.account_type === 'hiring_manager';
+			const queryField = isHiringManager ? 'hiring_manager_id' : 'job_seeker_id';
+			
+			// Get chats for the current user
+			const { data: chats, error: chatError } = await supabase
+				.from('chats')
+				.select('id')
+				.eq(queryField, $userStore.user.id);
+				
+			if (chatError) throw chatError;
+			
+			if (chats && chats.length > 0) {
+				// Get chat IDs
+				const chatIds = chats.map(chat => chat.id);
+				
+				// Count unread messages (where current user is not the sender and read_at is null)
+				const { data: unreadData, error: countError } = await supabase
+					.from('messages')
+					.select('id', { count: 'exact' })
+					.in('chat_id', chatIds)
+					.neq('sender_id', $userStore.user.id)
+					.is('read_at', null);
+					
+				if (countError) throw countError;
+				
+				unreadMessagesCount = unreadData?.length || 0;
+			}
+		} catch (error) {
+			console.error('Error checking unread messages:', error);
+		}
+	}
 
 	onMount(() => {
 		// Auth handling only runs in the browser
@@ -41,9 +81,24 @@
 			await _handleAuthChange(event, session);
 		});
 
+		// Setup real-time listener for new messages
+		const messagesChannel = supabase
+			.channel('unread-messages')
+			.on('postgres_changes', 
+				{ event: 'INSERT', schema: 'public', table: 'messages' }, 
+				() => {
+					// Recheck unread count when new message arrives
+					checkUnreadMessages();
+				})
+			.subscribe();
+		
+		// Initial check for unread messages
+		checkUnreadMessages();
+		
 		// Cleanup listener on component destroy
 		return () => {
 			authListener?.subscription.unsubscribe();
+			supabase.removeChannel(messagesChannel);
 		};
 	});
 
@@ -108,9 +163,13 @@
 					user: session.user
 				}));
 			}
+			
+			// Check for unread messages after successful login
+			checkUnreadMessages();
 		} else {
 			// User is logged out
 			userStore.reset();
+			unreadMessagesCount = 0;
 			// Only redirect to login if on a protected route
 			const protectedRoutes = ['/jobs/post', '/profile/hiring-manager', '/profile/job-seeker'];
 			const isProtectedRoute = protectedRoutes.some(route => 
@@ -165,6 +224,13 @@
 		{:else if $userStore.profile?.account_type === 'job_seeker'}
 			 <a href={jobBoardLink}>Job Board</a>
 		{/if}
+		<!-- Add messages link for all users with unread notification -->
+		<a href="/messages" class="messages-link">
+			Messages
+			{#if unreadMessagesCount > 0}
+				<span class="notification-badge">{unreadMessagesCount}</span>
+			{/if}
+		</a>
 		<!-- Use a button for actions like logout -->
 		<button type="button" class="logout-link" on:click={() => {
 			authStore.logout().then(() => {
@@ -261,5 +327,26 @@
 		flex-direction: column;
 		flex-grow: 1;
 	}
+
+	.messages-link {
+        position: relative;
+        padding-right: 8px;
+    }
+    
+    .notification-badge {
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        background-color: var(--error-text-color, #b91c1c);
+        color: white;
+        border-radius: 50%;
+        font-size: 0.7rem;
+        width: 18px;
+        height: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+    }
 
 </style>
