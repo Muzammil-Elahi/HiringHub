@@ -25,31 +25,27 @@
 			// Determine if user is a hiring manager or job seeker
 			const isHiringManager = $userStore.profile?.account_type === 'hiring_manager';
 			const queryField = isHiringManager ? 'hiring_manager_id' : 'job_seeker_id';
+			const userId = $userStore.user.id;
 			
-			// Get chats for the current user
-			const { data: chats, error: chatError } = await supabase
-				.from('chats')
-				.select('id')
-				.eq(queryField, $userStore.user.id);
-				
-			if (chatError) throw chatError;
+			// Simplified query that combines both steps
+			const { count, error } = await supabase
+				.from('messages')
+				.select('*', { count: 'exact', head: true })
+				.neq('sender_id', userId)
+				.is('read_at', null)
+				.in('chat_id', 
+					supabase
+						.from('chats')
+						.select('id')
+						.eq(queryField, userId)
+				);
 			
-			if (chats && chats.length > 0) {
-				// Get chat IDs
-				const chatIds = chats.map(chat => chat.id);
-				
-				// Count unread messages (where current user is not the sender and read_at is null)
-				const { data: unreadData, error: countError } = await supabase
-					.from('messages')
-					.select('id', { count: 'exact' })
-					.in('chat_id', chatIds)
-					.neq('sender_id', $userStore.user.id)
-					.is('read_at', null);
-					
-				if (countError) throw countError;
-				
-				unreadMessagesCount = unreadData?.length || 0;
-			}
+			if (error) throw error;
+			
+			// Update the unread count
+			unreadMessagesCount = count || 0;
+			console.log(`Unread messages count: ${unreadMessagesCount}`);
+			
 		} catch (error) {
 			console.error('Error checking unread messages:', error);
 		}
@@ -81,16 +77,40 @@
 			await _handleAuthChange(event, session);
 		});
 
-		// Setup real-time listener for new messages
+		// Setup real-time listener for new messages - improved implementation
 		const messagesChannel = supabase
-			.channel('unread-messages')
+			.channel('global-unread-messages')
 			.on('postgres_changes', 
-				{ event: 'INSERT', schema: 'public', table: 'messages' }, 
+				{ 
+					event: 'INSERT', 
+					schema: 'public', 
+					table: 'messages' 
+				}, 
+				(payload) => {
+					console.log('New message detected globally:', payload);
+					// Only count messages if they're not sent by this user
+					if (payload.new && payload.new.sender_id !== $userStore.user?.id) {
+						checkUnreadMessages();
+					}
+				})
+			.on('postgres_changes',
+				{
+					event: 'UPDATE',
+					schema: 'public',
+					table: 'messages',
+					filter: `read_at=is.not.null`
+				},
 				() => {
-					// Recheck unread count when new message arrives
+					// When a message is marked as read, update counts
 					checkUnreadMessages();
 				})
-			.subscribe();
+			.subscribe((status) => {
+				console.log(`Global message channel status: ${status}`);
+				if (status === 'SUBSCRIBED') {
+					// Recheck messages after subscription confirmed
+					checkUnreadMessages();
+				}
+			});
 		
 		// Initial check for unread messages
 		checkUnreadMessages();

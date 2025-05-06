@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { supabase } from '$lib/supabaseClient';
   import userStore from '$lib/stores/userStore';
-  import { goto } from '$app/navigation';
+  import { goto, pushState, replaceState } from '$app/navigation';
   import { page } from '$app/stores';
   
   // Data structures
@@ -14,23 +14,53 @@
   let isLoadingMessages = false;
   let error = '';
   let unreadCounts: Record<string, number> = {}; // Track unread counts per chat
-  
-  // Function to add debug logs - empty implementation to prevent errors
-  function debug(message: string) {
-    // Debug functionality disabled
-    // console.log(`[DEBUG] ${message}`);
-  }
+
   
   // Subscribe to navigation to reload when chat changes via URL
   $: chatId = $page.url.searchParams.get('id');
   $: if (chatId && chatId !== currentChat?.id) {
     loadChat(chatId);
+    
+    // When chat changes, update the channel filter
+    try {
+        // Remove old channel and create new one with updated filter
+        const newChannel = supabase
+          .channel('realtime-messages')
+          .on(
+            'postgres_changes',
+            { 
+              event: '*',
+              schema: 'public', 
+              table: 'messages',
+            },
+            (payload) => {
+              if (payload.eventType === 'INSERT' && payload.new) {
+                processNewMessage(payload.new);
+              }
+            }
+          )
+          .on(
+            'postgres_changes',
+            { 
+              event: 'UPDATE', 
+              schema: 'public', 
+              table: 'chats'
+            },
+            () => {
+              loadChats().catch(err => console.error('Error reloading chats:', err));
+            }
+          )
+          .subscribe();
+    } catch (error) {
+      console.error('Error updating real-time channel:', error);
+    }
   }
   
   // Check if user is logged in and is a hiring manager
   $: isHiringManager = $userStore.profile?.account_type === 'hiring_manager';
   
-  onMount(async () => {
+  // Setup function to initialize messages
+  async function setupMessages() {
     if (!$userStore.loggedIn) {
       goto('/login');
       return;
@@ -42,76 +72,104 @@
     }
     
     await loadChats();
+  }
+  
+  // When the component mounts
+  onMount(() => {
+    // Run setup asynchronously
+    setupMessages();
     
-    // Setup real-time subscription
-    const channelA = supabase
-      .channel('messages-changes')
-      .on('postgres_changes', 
-          { event: 'INSERT', schema: 'public', table: 'messages' }, 
-          handleNewMessage)
-      .on('postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'chats' },
-          handleChatUpdate)
-      .subscribe((status) => {
-        // debug(`Realtime subscription status: ${status}`);
-      });
-      
+    // Add visibility change listener for better read receipts
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Improved realtime subscription approach
+    const channel = supabase
+      .channel('realtime-messages')
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', // Listen for all events (INSERT, UPDATE, DELETE)
+          schema: 'public', 
+          table: 'messages',
+          filter: currentChat ? `chat_id=eq.${currentChat.id}` : undefined
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT' && payload.new) {
+            processNewMessage(payload.new);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'chats'
+        },
+        () => {
+          loadChats().catch(err => console.error('Error reloading chats:', err));
+        }
+      )
+      .subscribe();
+    
+    // Return synchronous cleanup function
     return () => {
-      // debug('Unsubscribing from realtime updates');
-      supabase.removeChannel(channelA);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      supabase.removeChannel(channel);
     };
   });
   
-  // Handle new messages coming in via real-time
-  async function handleNewMessage(payload: any) {
-    // debug(`New message received via realtime: ${JSON.stringify(payload.new)}`);
-    
-    const newMsg = payload.new;
-    
-    // Only add to current messages if it belongs to the active chat
-    if (currentChat && newMsg.chat_id === currentChat.id) {
-      messages = [...messages, newMsg];
-      
-      // Auto scroll to bottom when new message arrives
-      setTimeout(() => {
-        const messagesContainer = document.querySelector('.messages-wrapper');
-        if (messagesContainer) {
-          messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }
-      }, 50);
-      
-      // Mark as read if not sent by current user
-      if (newMsg.sender_id !== $userStore.user?.id) {
-        await markMessageAsRead(newMsg.id);
-        
-        // Send browser notification if the tab is not active
-        if (document.hidden && "Notification" in window) {
-          showNotification("New Message", `You received a new message from ${getOtherParticipant(currentChat).name}`);
-        }
+  // Handle document visibility changes
+  function handleVisibilityChange() {
+    if (document.visibilityState === 'visible' && currentChat) {
+      // Mark any unread messages as read when tab becomes visible
+      if (unreadCounts[currentChat.id] > 0) {
+        markChatAsRead().catch(err => {
+          console.error('Error marking messages as read on visibility change:', err);
+        });
       }
-    } else if (newMsg.sender_id !== $userStore.user?.id) {
-      // If it's a message for another chat, increment unread count
-      const chatId = newMsg.chat_id;
-      unreadCounts[chatId] = (unreadCounts[chatId] || 0) + 1;
-      
-      // Send notification
-      const relevantChat = chats.find(c => c.id === chatId);
-      if (relevantChat && document.hidden && "Notification" in window) {
-        const sender = getOtherParticipant(relevantChat).name;
-        showNotification("New Message", `${sender} sent you a message`);
+    }
+  }
+  
+  // Updated function to process new messages with improved checks
+  function processNewMessage(newMsg: any) {
+    // Notify user if they're looking at a different chat or tab is not focused
+    if ((!currentChat || newMsg.chat_id !== currentChat.id) && newMsg.sender_id !== $userStore.user?.id) {
+      // Find the chat in our list
+      const chat = chats.find(c => c.id === newMsg.chat_id);
+      if (chat) {
+        const sender = isHiringManager ? chat.job_seeker?.full_name : chat.hiring_manager?.full_name;
+        showNotification(`New message from ${sender || 'Someone'}`, newMsg.content);
       }
     }
     
-    // Update the chat list to show the latest message
-    await loadChats();
-  }
-  
-  // Handle chat updates
-  function handleChatUpdate(payload: any) {
-    // debug(`Chat updated via realtime: ${JSON.stringify(payload.new)}`);
+    // Update UI for active chat
+    if (currentChat && newMsg.chat_id === currentChat.id) {
+      // Add to messages array if not already there
+      if (!messages.some(m => m.id === newMsg.id)) {
+        messages = [...messages, newMsg];
+        
+        // Auto scroll
+        setTimeout(() => {
+          const messagesContainer = document.querySelector('.messages-wrapper');
+          if (messagesContainer) {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+          }
+        }, 50);
+        
+        // Mark as read if from other user and we're viewing the chat
+        if (newMsg.sender_id !== $userStore.user?.id && document.visibilityState === 'visible') {
+          markMessageAsRead(newMsg.id).catch(err => {
+            console.error('Error marking message as read:', err);
+          });
+        }
+      }
+    } 
     
-    // Refresh the chat list to get updated last_message_at, etc.
-    loadChats();
+    // Always refresh the chat list to show the latest message
+    loadChats().catch(err => {
+      console.error('Error refreshing chats:', err);
+    });
   }
   
   // Load all chats for the current user
@@ -139,8 +197,6 @@
         .order('last_message_at', { ascending: false });
       
       if (dbError) throw dbError;
-      
-      // debug(`Loaded ${data?.length || 0} chats`);
       
       // Fetch last messages for each chat
       if (data && data.length > 0) {
@@ -178,20 +234,20 @@
       
       // If we have chats but no current chat, load the first one
       if (chats.length > 0 && !currentChat) {
-        if (chatId) {
-          await loadChat(chatId);
-        } else {
+        const chatIdFromUrl = $page.url.searchParams.get('id');
+        if (chatIdFromUrl) {
+          await loadChat(chatIdFromUrl);
+        } else if (chats[0]) {
           await loadChat(chats[0].id);
-          // Update URL to include the chat ID
+          // Update URL to include the chat ID using SvelteKit navigation
           const url = new URL(window.location.href);
           url.searchParams.set('id', chats[0].id);
-          history.replaceState(null, '', url.toString());
+          replaceState(url.toString(), {});
         }
       }
       
     } catch (err: any) {
       error = `Error loading chats: ${err.message}`;
-      // debug(`Error: ${error}`);
     } finally {
       isLoadingChats = false;
     }
@@ -207,10 +263,12 @@
     isLoadingMessages = true;
     error = '';
     
-    // Update URL to reflect selected chat
+    // Update URL to reflect selected chat using SvelteKit navigation
     const url = new URL(window.location.href);
     url.searchParams.set('id', chatId);
-    history.replaceState(null, '', url.toString());
+    
+    // Use replaceState from $app/navigation instead of history.replaceState
+    replaceState(url.toString(), {});
     
     try {
       // Find selected chat from the list
@@ -321,12 +379,17 @@
     if (!newMessage.trim() || !currentChat) return;
     
     // debug(`Sending message: ${newMessage}`);
+    const originalMessage = newMessage.trim(); // Store the message text
     
     try {
+      // Clear input immediately to improve perceived performance
+      newMessage = '';
+      
       const messageData = {
         chat_id: currentChat.id,
         sender_id: $userStore.user?.id,
-        content: newMessage,
+        content: originalMessage,
+        created_at: new Date().toISOString(),
         delivered_at: new Date().toISOString(),
         read_at: null
       };
@@ -342,6 +405,9 @@
       
       // debug(`Message sent with ID: ${messageResult.id}`);
       
+      // Add the message to local messages array immediately
+      messages = [...messages, messageResult];
+      
       // Update chat's last_message_at
       const { error: chatError } = await supabase
         .from('chats')
@@ -353,9 +419,6 @@
       
       if (chatError) throw chatError;
       
-      // Clear input
-      newMessage = '';
-      
       // Scroll to bottom after sending
       setTimeout(() => {
         const messagesContainer = document.querySelector('.messages-wrapper');
@@ -366,7 +429,8 @@
       
     } catch (err: any) {
       error = `Error sending message: ${err.message}`;
-      // debug(`Error: ${error}`);
+      // If there was an error, restore the message
+      newMessage = originalMessage;
     }
   }
   
@@ -425,11 +489,15 @@
     // This is just a placeholder for the feature
   }
   
-  // Function to show browser notification
+  // Enhanced function to show browser notification
   function showNotification(title: string, body: string) {
-    if (Notification.permission === "granted") {
+    if (!("Notification" in window)) {
+      return; // Notifications not supported
+    }
+    
+    if (Notification.permission === "granted" && document.visibilityState !== 'visible') {
       const notification = new Notification(title, {
-        body: body,
+        body: body.length > 50 ? body.substring(0, 47) + '...' : body,
         icon: "/favicon.png" // Make sure this path exists
       });
       
