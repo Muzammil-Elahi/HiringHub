@@ -15,15 +15,10 @@
   let error = '';
   let unreadCounts: Record<string, number> = {}; // Track unread counts per chat
   
-  // Debug info
-  let debugLogs: string[] = [];
-  let showDebug = true;
-  
-  // Function to add debug logs
+  // Function to add debug logs - empty implementation to prevent errors
   function debug(message: string) {
-    const timestamp = new Date().toISOString().substr(11, 12);
-    debugLogs = [...debugLogs, `[${timestamp}] ${message}`];
-    console.log(`[DEBUG] ${message}`);
+    // Debug functionality disabled
+    // console.log(`[DEBUG] ${message}`);
   }
   
   // Subscribe to navigation to reload when chat changes via URL
@@ -36,9 +31,7 @@
   $: isHiringManager = $userStore.profile?.account_type === 'hiring_manager';
   
   onMount(async () => {
-    debug('Component mounted');
     if (!$userStore.loggedIn) {
-      debug('User not logged in, redirecting to login page');
       goto('/login');
       return;
     }
@@ -60,18 +53,18 @@
           { event: 'UPDATE', schema: 'public', table: 'chats' },
           handleChatUpdate)
       .subscribe((status) => {
-        debug(`Realtime subscription status: ${status}`);
+        // debug(`Realtime subscription status: ${status}`);
       });
       
     return () => {
-      debug('Unsubscribing from realtime updates');
+      // debug('Unsubscribing from realtime updates');
       supabase.removeChannel(channelA);
     };
   });
   
   // Handle new messages coming in via real-time
   async function handleNewMessage(payload: any) {
-    debug(`New message received via realtime: ${JSON.stringify(payload.new)}`);
+    // debug(`New message received via realtime: ${JSON.stringify(payload.new)}`);
     
     const newMsg = payload.new;
     
@@ -115,7 +108,7 @@
   
   // Handle chat updates
   function handleChatUpdate(payload: any) {
-    debug(`Chat updated via realtime: ${JSON.stringify(payload.new)}`);
+    // debug(`Chat updated via realtime: ${JSON.stringify(payload.new)}`);
     
     // Refresh the chat list to get updated last_message_at, etc.
     loadChats();
@@ -123,7 +116,6 @@
   
   // Load all chats for the current user
   async function loadChats() {
-    debug('Loading chats');
     isLoadingChats = true;
     error = '';
     
@@ -148,7 +140,7 @@
       
       if (dbError) throw dbError;
       
-      debug(`Loaded ${data?.length || 0} chats`);
+      // debug(`Loaded ${data?.length || 0} chats`);
       
       // Fetch last messages for each chat
       if (data && data.length > 0) {
@@ -199,7 +191,7 @@
       
     } catch (err: any) {
       error = `Error loading chats: ${err.message}`;
-      debug(`Error: ${error}`);
+      // debug(`Error: ${error}`);
     } finally {
       isLoadingChats = false;
     }
@@ -209,7 +201,7 @@
   async function loadChat(chatId: string) {
     if (!chatId) return;
     
-    debug(`Loading chat ${chatId}`);
+    // debug(`Loading chat ${chatId}`);
     
     // Set loading state
     isLoadingMessages = true;
@@ -240,7 +232,7 @@
       if (messageError) throw messageError;
       
       messages = messageData || [];
-      debug(`Loaded ${messages.length} messages for chat ${chatId}`);
+      // debug(`Loaded ${messages.length} messages for chat ${chatId}`);
       
       // Mark unread messages as read
       if (unreadCounts[chatId] > 0) {
@@ -257,7 +249,7 @@
       
     } catch (err: any) {
       error = `Error loading chat: ${err.message}`;
-      debug(`Error: ${error}`);
+      // debug(`Error: ${error}`);
     } finally {
       isLoadingMessages = false;
     }
@@ -267,7 +259,7 @@
   async function markChatAsRead() {
     if (!currentChat) return;
     
-    debug('Marking messages as read');
+    // debug('Marking messages as read');
     
     try {
       const otherUserId = isHiringManager 
@@ -295,13 +287,13 @@
       unreadCounts[currentChat.id] = 0;
       
     } catch (err: any) {
-      debug(`Error marking messages as read: ${err.message}`);
+      // debug(`Error marking messages as read: ${err.message}`);
     }
   }
   
   // Mark a single message as read
   async function markMessageAsRead(messageId: string) {
-    debug(`Marking message ${messageId} as read`);
+    // debug(`Marking message ${messageId} as read`);
     
     try {
       const { error: updateError } = await supabase
@@ -320,7 +312,7 @@
       });
       
     } catch (err: any) {
-      debug(`Error marking message as read: ${err.message}`);
+      // debug(`Error marking message as read: ${err.message}`);
     }
   }
   
@@ -328,7 +320,7 @@
   async function sendMessage() {
     if (!newMessage.trim() || !currentChat) return;
     
-    debug(`Sending message: ${newMessage}`);
+    // debug(`Sending message: ${newMessage}`);
     
     try {
       const messageData = {
@@ -348,7 +340,7 @@
       
       if (messageError) throw messageError;
       
-      debug(`Message sent with ID: ${messageResult.id}`);
+      // debug(`Message sent with ID: ${messageResult.id}`);
       
       // Update chat's last_message_at
       const { error: chatError } = await supabase
@@ -374,7 +366,7 @@
       
     } catch (err: any) {
       error = `Error sending message: ${err.message}`;
-      debug(`Error: ${error}`);
+      // debug(`Error: ${error}`);
     }
   }
   
@@ -628,23 +620,6 @@
       </div>
     {/if}
   </div>
-  
-  <!-- Debug panel -->
-  {#if showDebug}
-    <div class="debug-panel">
-      <div class="debug-header">
-        <h4>Debug Logs</h4>
-        <button class="toggle-debug" on:click={() => { showDebug = !showDebug }}>Hide</button>
-      </div>
-      <div class="debug-content">
-        {#each debugLogs as log}
-          <div class="debug-log">{log}</div>
-        {/each}
-      </div>
-    </div>
-  {:else}
-    <button class="show-debug" on:click={() => { showDebug = true }}>Show Debug</button>
-  {/if}
 </div>
 
 <style>
@@ -1041,70 +1016,6 @@
   .empty-hint {
     font-size: 0.875rem;
     margin-top: var(--spacing-md);
-  }
-  
-  /* Debug panel */
-  .debug-panel {
-    position: fixed;
-    bottom: 0;
-    right: 0;
-    width: 400px;
-    max-height: 300px;
-    background-color: rgba(0, 0, 0, 0.85);
-    color: #fff;
-    border-top-left-radius: var(--border-radius);
-    z-index: 1000;
-    font-family: monospace;
-    font-size: 12px;
-  }
-  
-  .debug-header {
-    display: flex;
-    justify-content: space-between;
-    padding: 8px;
-    background-color: #333;
-    border-top-left-radius: var(--border-radius);
-  }
-  
-  .debug-header h4 {
-    margin: 0;
-    font-size: 14px;
-  }
-  
-  .toggle-debug,
-  .show-debug {
-    background: none;
-    border: none;
-    color: #aaa;
-    cursor: pointer;
-    padding: 2px 8px;
-    font-size: 12px;
-  }
-  
-  .toggle-debug:hover,
-  .show-debug:hover {
-    color: #fff;
-  }
-  
-  .show-debug {
-    position: fixed;
-    bottom: 0;
-    right: 0;
-    background-color: #333;
-    padding: 5px 10px;
-    border-top-left-radius: var(--border-radius);
-    z-index: 1000;
-  }
-  
-  .debug-content {
-    overflow-y: auto;
-    max-height: 260px;
-    padding: 8px;
-  }
-  
-  .debug-log {
-    padding: 2px 0;
-    border-bottom: 1px solid #333;
   }
   
   /* Mobile responsive adjustments */
