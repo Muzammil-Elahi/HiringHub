@@ -29,6 +29,10 @@
   let resumeLoading = false;
   let resumeLoadError = '';
 
+  // Keep track of applied jobs
+  let appliedJobs: Record<string, boolean> = {};
+  let checkingApplications = false;
+
   // Initialize filters from loaded jobs
   function initializeFilters() {
     // Extract unique locations and job types for filters
@@ -42,6 +46,34 @@
     
     locations = Array.from(uniqueLocations);
     jobTypes = Array.from(uniqueJobTypes);
+  }
+
+  // Check which jobs the user has already applied to
+  async function checkUserApplications() {
+    if (!$userStore.loggedIn || !$userStore.user || $userStore.profile?.account_type !== 'job_seeker') {
+      return;
+    }
+    
+    try {
+      checkingApplications = true;
+      const { data: applications, error } = await supabase
+        .from('applications')
+        .select('job_id')
+        .eq('job_seeker_id', $userStore.user.id);
+      
+      if (error) throw error;
+      
+      // Create a map of job_id -> true for quick lookup
+      appliedJobs = applications.reduce((acc, app) => {
+        acc[app.job_id] = true;
+        return acc;
+      }, {} as Record<string, boolean>);
+      
+    } catch (err) {
+      console.error('Error checking job applications:', err);
+    } finally {
+      checkingApplications = false;
+    }
   }
 
   // Load resume text and calculate match percentages
@@ -170,6 +202,12 @@
       return;
     }
     
+    // Don't allow application if already applied
+    if (appliedJobs[jobId]) {
+      alert('You have already applied to this job.');
+      return;
+    }
+    
     try {
       loading = true;
       
@@ -193,6 +231,8 @@
       
       if (existingApplication) {
         alert('You have already applied to this job.');
+        // Update our local cache of applied jobs
+        appliedJobs[jobId] = true;
         return;
       }
       
@@ -219,6 +259,9 @@
       if (applyError) throw applyError;
       
       console.log('Application submitted successfully:', applicationResult);
+      
+      // Update our local cache of applied jobs
+      appliedJobs[jobId] = true;
       
       alert('Application submitted successfully!');
       
@@ -274,6 +317,7 @@
   onMount(() => {
     initializeFilters();
     loadResumeAndCalculateMatches();
+    checkUserApplications();
   });
 </script>
 
@@ -427,8 +471,10 @@
             <button class="view-btn" on:click={() => goto(`/jobs/${job.id}`)}>
               View Details
             </button>
-            <button class="apply-btn" on:click={() => applyToJob(job.id)}>
-              1-Click Apply
+            <button class="apply-btn" on:click={() => applyToJob(job.id)} disabled={loading || appliedJobs[job.id] || checkingApplications}>
+              {loading ? 'Submitting...' : 
+              checkingApplications ? 'Checking...' :
+              appliedJobs[job.id] ? 'Already Applied' : '1-Click Apply'}
             </button>
           </div>
         </div>
@@ -783,6 +829,12 @@
     white-space: nowrap;
     z-index: 10;
     margin-bottom: var(--spacing-xs);
+  }
+  
+  .apply-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    background-color: var(--text-muted-color, #6b7280);
   }
   
   /* Loading, Error, and Empty States */

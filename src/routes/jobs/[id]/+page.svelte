@@ -24,6 +24,10 @@
   let resumeLoading = false;
   let resumeLoadError = '';
   
+  // Check if user has already applied
+  let hasApplied = false;
+  let checkingApplication = false;
+  
   // Calculate match percentage for current job
   async function calculateJobMatch() {
     if (!$userStore.loggedIn || !$userStore.profile || $userStore.profile.account_type !== 'job_seeker') {
@@ -149,6 +153,7 @@
       
       message = 'Application submitted successfully!';
       messageType = 'success';
+      hasApplied = true;
       
     } catch (err: any) {
       console.error('Error applying to job:', err);
@@ -156,6 +161,30 @@
       messageType = 'error';
     } finally {
       loading = false;
+    }
+  }
+  
+  async function checkExistingApplication() {
+    if (!$userStore.loggedIn || !$userStore.user || $userStore.profile?.account_type !== 'job_seeker') {
+      return;
+    }
+    
+    try {
+      checkingApplication = true;
+      const { data: existingApplication, error: checkError } = await supabase
+        .from('applications')
+        .select('*')
+        .eq('job_id', job.id)
+        .eq('job_seeker_id', $userStore.user.id)
+        .maybeSingle();
+      
+      if (checkError) throw checkError;
+      
+      hasApplied = !!existingApplication;
+    } catch (err) {
+      console.error('Error checking existing application:', err);
+    } finally {
+      checkingApplication = false;
     }
   }
 
@@ -247,6 +276,7 @@
     // Calculate match for job seekers
     if (job && $userStore.profile?.account_type === 'job_seeker') {
       calculateJobMatch();
+      checkExistingApplication();
     }
   });
 </script>
@@ -306,8 +336,10 @@
             </div>
           {/if}
         
-          <button class="apply-btn" on:click={applyToJob} disabled={loading}>
-            {loading ? 'Submitting...' : '1-Click Apply'}
+          <button class="apply-btn" on:click={applyToJob} disabled={loading || hasApplied || checkingApplication}>
+            {loading ? 'Submitting...' : 
+             checkingApplication ? 'Checking...' : 
+             hasApplied ? 'Already Applied' : '1-Click Apply'}
           </button>
         {:else if !$userStore.loggedIn}
           <a href="/login" class="login-btn">Log in to Apply</a>
@@ -425,8 +457,10 @@
                 </div>
               {/if}
               
-              <button class="apply-btn full-width" on:click={applyToJob} disabled={loading}>
-                {loading ? 'Submitting...' : '1-Click Apply'}
+              <button class="apply-btn full-width" on:click={applyToJob} disabled={loading || hasApplied || checkingApplication}>
+                {loading ? 'Submitting...' : 
+                 checkingApplication ? 'Checking...' : 
+                 hasApplied ? 'Already Applied' : '1-Click Apply'}
               </button>
             {:else if !$userStore.loggedIn}
               <a href="/login" class="login-btn full-width">Log in to Apply</a>
@@ -637,6 +671,7 @@
   .apply-btn:disabled {
     opacity: 0.7;
     cursor: not-allowed;
+    background-color: var(--text-muted-color, #6b7280);
   }
   
   .login-btn {
