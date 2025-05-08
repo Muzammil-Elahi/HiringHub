@@ -1,0 +1,56 @@
+{
+  "rules": [
+    {
+      "pattern": "**/*.svelte",
+      "convention": "svelte-component"
+    },
+    {
+      "pattern": "src/routes/**/*.ts",
+      "convention": "sveltekit-route"
+    },
+    {
+      "pattern": "src/lib/**/*.ts",
+      "convention": "typescript-module"
+    },
+    {
+      "pattern": "src/lib/components/**/*.svelte",
+      "convention": "svelte-component"
+    },
+    {
+      "pattern": "src/lib/stores/**/*.ts",
+      "convention": "svelte-store"
+    },
+    {
+      "pattern": "src/lib/utils/**/*.ts",
+      "convention": "typescript-utility"
+    },
+    {
+      "pattern": "*.test.ts",
+      "convention": "test-file"
+    }
+  ],
+  "conventions": {
+    "svelte-component": {
+      "format": {
+        "script": true,
+        "markup": true,
+        "style": true
+      }
+    },
+    "sveltekit-route": {
+      "format": true
+    },
+    "typescript-module": {
+      "format": true
+    },
+    "svelte-store": {
+      "format": true
+    },
+    "typescript-utility": {
+      "format": true
+    },
+    "test-file": {
+      "format": true
+    }
+  }
+} 
