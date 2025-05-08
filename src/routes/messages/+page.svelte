@@ -4,6 +4,7 @@
   import userStore from '$lib/stores/userStore';
   import { goto, pushState, replaceState } from '$app/navigation';
   import { page } from '$app/stores';
+  import VideoCallModal from '$lib/components/VideoCallModal.svelte';
   
   // Data structures
   let chats: any[] = [];
@@ -15,6 +16,19 @@
   let error = '';
   let unreadCounts: Record<string, number> = {}; // Track unread counts per chat
 
+  // Call state
+  let isInCall = false;
+  let callType: 'video' | 'audio' = 'video';
+  let incomingCall: {chatId: string, callerId: string, callerName: string, type: 'video' | 'audio'} | null = null;
+  let isCallInitiator = false;
+  let callChannel: any = null;
+  let micEnabled = true;
+  let cameraEnabled = true;
+  
+  // Audio notification elements
+  let messageSound: HTMLAudioElement;
+  let callSound: HTMLAudioElement;
+  let soundsLoaded = false;
   
   // Subscribe to navigation to reload when chat changes via URL
   $: chatId = $page.url.searchParams.get('id');
@@ -71,7 +85,16 @@
       Notification.requestPermission();
     }
     
+    // Initialize audio elements
+    if (typeof Audio !== 'undefined') {
+      messageSound = new Audio('/sounds/message.mp3');
+      callSound = new Audio('/sounds/call.mp3');
+      callSound.loop = true;
+      soundsLoaded = true;
+    }
+    
     await loadChats();
+    setupCallListeners();
   }
   
   // When the component mounts
@@ -116,6 +139,13 @@
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       supabase.removeChannel(channel);
+      cleanupCallListeners();
+      
+      // Stop any playing sounds
+      if (soundsLoaded) {
+        callSound.pause();
+        messageSound.pause();
+      }
     };
   });
   
@@ -131,7 +161,7 @@
     }
   }
   
-  // Updated function to process new messages with improved checks
+  // Updated function to process new messages with improved checks and sound
   function processNewMessage(newMsg: any) {
     // Notify user if they're looking at a different chat or tab is not focused
     if ((!currentChat || newMsg.chat_id !== currentChat.id) && newMsg.sender_id !== $userStore.user?.id) {
@@ -140,6 +170,11 @@
       if (chat) {
         const sender = isHiringManager ? chat.job_seeker?.full_name : chat.hiring_manager?.full_name;
         showNotification(`New message from ${sender || 'Someone'}`, newMsg.content);
+        
+        // Play message sound
+        if (soundsLoaded) {
+          messageSound.play().catch(err => console.error('Error playing message sound:', err));
+        }
       }
     }
     
@@ -522,6 +557,178 @@
     // Can be used to implement "mark as read when scrolled into view" feature
     // Currently just a placeholder for the scroll event
   }
+  
+  // Call management
+  function setupCallListeners() {
+    if (!$userStore.loggedIn || !$userStore.user) return;
+    
+    // Create a channel for incoming call notifications
+    callChannel = supabase
+      .channel(`user-calls:${$userStore.user.id}`)
+      .on('broadcast', { event: 'call-request' }, (payload) => {
+        handleIncomingCall(payload);
+      })
+      .on('broadcast', { event: 'call-canceled' }, () => {
+        incomingCall = null;
+      })
+      .subscribe();
+  }
+  
+  function cleanupCallListeners() {
+    if (callChannel) {
+      supabase.removeChannel(callChannel);
+    }
+  }
+  
+  // Handle incoming call with sound
+  function handleIncomingCall(payload: any) {
+    const { chatId, callerId, callerName, type } = payload.payload;
+    
+    // Only accept calls if not currently in a call
+    if (!isInCall) {
+      incomingCall = {
+        chatId,
+        callerId,
+        callerName,
+        type
+      };
+      
+      // Also show browser notification
+      const notificationTitle = `Incoming ${type} call`;
+      const notificationBody = `${callerName} is calling you`;
+      showNotification(notificationTitle, notificationBody);
+      
+      // Play call sound
+      if (soundsLoaded) {
+        callSound.play().catch(err => console.error('Error playing call sound:', err));
+      }
+    } else {
+      // Automatically reject if already in a call
+      rejectCall();
+    }
+  }
+  
+  // Toggle mic for incoming call
+  function toggleMicBeforeAnswer() {
+    micEnabled = !micEnabled;
+  }
+  
+  // Toggle camera for incoming call
+  function toggleCameraBeforeAnswer() {
+    cameraEnabled = !cameraEnabled;
+  }
+  
+  // Initiate a call
+  function startCall(type: 'video' | 'audio') {
+    if (!isHiringManager) {
+      alert("Only hiring managers can initiate calls.");
+      return;
+    }
+    
+    if (!currentChat) {
+      alert("No active conversation selected.");
+      return;
+    }
+    
+    callType = type;
+    isInCall = true;
+    isCallInitiator = true;
+    
+    // Notify job seeker of incoming call
+    const otherUser = getOtherParticipant(currentChat);
+    
+    // Send call notification via Supabase Realtime
+    const callRequestChannel = supabase
+      .channel(`user-calls:${otherUser.userId}`)
+      .subscribe();
+      
+    setTimeout(() => {
+      callRequestChannel.send({
+        type: 'broadcast',
+        event: 'call-request',
+        payload: {
+          chatId: currentChat.id,
+          callerId: $userStore.user?.id,
+          callerName: $userStore.profile?.full_name || 'Hiring Manager',
+          type: callType
+        }
+      });
+      
+      // Clean up channel after sending
+      supabase.removeChannel(callRequestChannel);
+    }, 1000);
+  }
+  
+  // Accept an incoming call with current mic/camera settings
+  function acceptCall() {
+    if (!incomingCall) return;
+    
+    // Find the chat
+    const chat = chats.find(c => c.id === incomingCall?.chatId);
+    if (chat) {
+      // Set the chat as active if it's not already
+      if (!currentChat || currentChat.id !== chat.id) {
+        loadChat(chat.id);
+      }
+      
+      // Start the call
+      callType = incomingCall.type;
+      isInCall = true;
+      isCallInitiator = false;
+      
+      // Stop call sound
+      if (soundsLoaded) {
+        callSound.pause();
+        callSound.currentTime = 0;
+      }
+      
+      incomingCall = null;
+    }
+  }
+  
+  // Reject an incoming call
+  function rejectCall() {
+    if (!incomingCall) return;
+    
+    // Notify caller that call was rejected
+    if (incomingCall.callerId) {
+      const callRejectChannel = supabase
+        .channel(`user-calls:${incomingCall.callerId}`)
+        .subscribe();
+        
+      setTimeout(() => {
+        callRejectChannel.send({
+          type: 'broadcast',
+          event: 'call-canceled',
+          payload: {
+            chatId: incomingCall?.chatId,
+            rejected: true
+          }
+        });
+        
+        // Clean up channel after sending
+        supabase.removeChannel(callRejectChannel);
+      }, 1000);
+    }
+    
+    // Stop call sound
+    if (soundsLoaded) {
+      callSound.pause();
+      callSound.currentTime = 0;
+    }
+    
+    incomingCall = null;
+  }
+  
+  // Handle call ended
+  function handleCallEnded() {
+    isInCall = false;
+    isCallInitiator = false;
+    
+    // Reset mic and camera settings to default
+    micEnabled = true;
+    cameraEnabled = true;
+  }
 </script>
 
 <svelte:head>
@@ -633,11 +840,24 @@
           </div>
         </div>
         
-        {#if currentChat.job}
-          <a href="/jobs/{currentChat.job.id}" class="view-job-link">
-            View Job
-          </a>
-        {/if}
+        <div class="header-actions">
+          {#if isHiringManager}
+            <div class="call-buttons">
+              <button class="call-btn audio-call" on:click={() => startCall('audio')} title="Start Audio Call">
+                <span class="call-icon">🎧</span>
+              </button>
+              <button class="call-btn video-call" on:click={() => startCall('video')} title="Start Video Call">
+                <span class="call-icon">📹</span>
+              </button>
+            </div>
+          {/if}
+          
+          {#if currentChat.job}
+            <a href="/jobs/{currentChat.job.id}" class="view-job-link">
+              View Job
+            </a>
+          {/if}
+        </div>
       </div>
       
       <!-- Messages -->
@@ -689,6 +909,63 @@
     {/if}
   </div>
 </div>
+
+<!-- Call Modal -->
+{#if isInCall}
+  <VideoCallModal 
+    chatId={currentChat.id}
+    otherUserId={getOtherParticipant(currentChat).userId}
+    callType={callType}
+    isHiringManager={isHiringManager}
+    isInitiator={isCallInitiator}
+    initialMicEnabled={micEnabled}
+    initialCameraEnabled={cameraEnabled}
+    on:callEnded={handleCallEnded}
+  />
+{/if}
+
+<!-- Incoming Call Dialog -->
+{#if incomingCall}
+  <div class="incoming-call-dialog">
+    <div class="call-info">
+      <div class="call-icon">
+        {incomingCall?.type === 'video' ? '📹' : '🎧'}
+      </div>
+      <h3>Incoming {incomingCall?.type} Call</h3>
+      <p>From: {incomingCall?.callerName}</p>
+    </div>
+    
+    <!-- Audio/video toggle options -->
+    <div class="call-options">
+      <button 
+        class="toggle-btn {micEnabled ? '' : 'disabled'}" 
+        on:click={toggleMicBeforeAnswer}
+        title={micEnabled ? "Mute microphone" : "Unmute microphone"}
+      >
+        {micEnabled ? '🎤' : '🔇'}
+      </button>
+      
+      {#if incomingCall?.type === 'video'}
+        <button 
+          class="toggle-btn {cameraEnabled ? '' : 'disabled'}" 
+          on:click={toggleCameraBeforeAnswer}
+          title={cameraEnabled ? "Turn off camera" : "Turn on camera"}
+        >
+          {cameraEnabled ? '📹' : '📵'}
+        </button>
+      {/if}
+    </div>
+    
+    <div class="call-actions">
+      <button class="reject-btn" on:click={rejectCall}>
+        Decline
+      </button>
+      <button class="accept-btn" on:click={acceptCall}>
+        Accept
+      </button>
+    </div>
+  </div>
+{/if}
 
 <style>
   .messages-container {
@@ -1169,5 +1446,163 @@
   .participant-info h3 {
     margin: 0;
     font-size: 1.1rem;
+  }
+  
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md, 12px);
+  }
+  
+  .call-buttons {
+    display: flex;
+    gap: var(--spacing-sm, 8px);
+  }
+  
+  .call-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background-color: var(--surface-secondary-color, #f3f4f6);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+  }
+  
+  .call-btn:hover {
+    background-color: var(--primary-color-light, #e0f2fe);
+  }
+  
+  .call-btn.audio-call:hover {
+    background-color: var(--success-bg-color, #dcfce7);
+  }
+  
+  .call-btn.video-call:hover {
+    background-color: var(--primary-color-light, #e0f2fe);
+  }
+  
+  .call-icon {
+    font-size: 1.2rem;
+  }
+  
+  /* Incoming Call Dialog */
+  .incoming-call-dialog {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 300px;
+    background-color: var(--surface-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: var(--spacing-md);
+    z-index: 1000;
+    animation: slide-in 0.3s ease;
+  }
+  
+  .call-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: var(--spacing-md);
+  }
+  
+  .call-icon {
+    font-size: 2rem;
+    margin-bottom: var(--spacing-sm);
+    animation: pulse 1.5s infinite;
+  }
+  
+  .call-info h3 {
+    margin: 0 0 var(--spacing-xs) 0;
+  }
+  
+  .call-info p {
+    margin: 0;
+    color: var(--text-muted-color);
+  }
+  
+  .call-options {
+    display: flex;
+    justify-content: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+  }
+  
+  .toggle-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background-color: var(--surface-secondary-color, #f3f4f6);
+    cursor: pointer;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+  
+  .toggle-btn:hover {
+    background-color: var(--surface-hover-color, #e5e7eb);
+  }
+  
+  .toggle-btn.disabled {
+    background-color: var(--error-bg-color, #fee2e2);
+    color: var(--error-text-color, #b91c1c);
+  }
+  
+  .call-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+  }
+  
+  .accept-btn,
+  .reject-btn {
+    flex: 1;
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius);
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+  }
+  
+  .accept-btn {
+    background-color: var(--success-color, #10b981);
+    color: white;
+  }
+  
+  .reject-btn {
+    background-color: var(--error-text-color, #b91c1c);
+    color: white;
+  }
+  
+  @keyframes slide-in {
+    from { 
+      transform: translateY(-20px); 
+      opacity: 0; 
+    }
+    to { 
+      transform: translateY(0); 
+      opacity: 1; 
+    }
+  }
+  
+  @keyframes pulse {
+    0% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.1);
+      opacity: 0.8;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
   }
 </style> 
