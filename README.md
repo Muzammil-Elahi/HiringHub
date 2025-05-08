@@ -130,6 +130,40 @@ You can preview the production build with `npm run preview`.
 - Application state is managed through Svelte stores
 - The UI is responsive and works on mobile devices
 
+## Future Considerations
+
+The HiringHub platform has several exciting enhancements planned for future development:
+
+### Email Functionality
+- **Automated Notifications**: Email alerts for new messages, job applications, and interview requests
+- **Digest Emails**: Weekly job recommendations based on skills and preferences
+- **Transactional Emails**: Application status updates and interview confirmations
+- **Marketing Communications**: Optional newsletters with career tips and industry insights
+
+### Enhanced Matching with Semantic Search and RAG
+- **Semantic Resume Analysis**: Moving beyond keyword matching to understand the context and relevance of skills and experiences
+- **Retrieval Augmented Generation (RAG)**: Leveraging large language models to better interpret both job descriptions and resumes
+- **Skills Taxonomy Integration**: Building a comprehensive database of related skills and competencies
+- **Soft Skills Assessment**: Analyzing communication styles and cultural fit indicators
+- **Career Path Prediction**: Suggesting jobs that align with career progression patterns
+
+### Agentic AI for Messaging and Interviews
+- **Interview Preparation Assistant**: AI-powered preparation tools offering customized advice based on job requirements
+- **Message Suggestions**: Contextual recommendations for effective communication
+- **Automated Scheduling**: AI agents coordinating interview times based on availability
+- **Conversation Summarization**: Providing concise summaries of lengthy message threads
+- **Interview Insights**: Post-interview analysis highlighting strengths and areas for improvement
+- **Follow-up Recommendations**: Suggesting appropriate timing and content for follow-up communications
+
+### Platform Enhancements
+- **Mobile Application**: Native mobile apps for iOS and Android
+- **Advanced Analytics Dashboard**: Comprehensive insights for both job seekers and hiring managers
+- **Integration Ecosystem**: Connections with popular ATS, CRM, and calendar systems
+- **Multilingual Support**: Expanding to support multiple languages
+- **Accessibility Improvements**: Enhanced compliance with WCAG guidelines
+
+These future enhancements aim to create an even more seamless, intelligent, and effective hiring ecosystem that benefits both job seekers and hiring managers.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
