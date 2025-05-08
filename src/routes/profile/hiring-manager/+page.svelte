@@ -277,10 +277,10 @@
       <div class="profile-view">
         <div class="profile-header">
           <div class="profile-info">
-            <h3>{companyName || 'Your Company'}</h3>
             {#if fullName}
-              <p class="headline">Hiring Manager: {fullName}</p>
+              <h3>{fullName}</h3>
             {/if}
+            <p class="headline">{companyName || 'Your Company'}</p>
             {#if location}
               <p class="location"><i class="location-icon">📍</i> {location}</p>
             {/if}
@@ -295,6 +295,16 @@
               <a href={companyWebsite} target="_blank" rel="noopener noreferrer">
                 <span class="link-icon">🔗</span> {companyWebsite}
               </a>
+            </p>
+          </div>
+        {/if}
+
+        <!-- Contact Info Section -->
+        {#if $userStore.user?.email}
+          <div class="profile-section">
+            <h4>Contact Email</h4>
+            <p>
+              <span class="link-icon">✉️</span> {$userStore.user.email}
             </p>
           </div>
         {/if}

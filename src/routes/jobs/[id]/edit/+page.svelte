@@ -129,17 +129,51 @@
       await supabase.from('job_skills').delete().eq('job_id', job.id);
       const filteredSkills = skills.filter(skill => skill.trim() !== '');
       if (filteredSkills.length > 0) {
-        const jobSkillsToInsert = filteredSkills.map(skill => ({
-          job_id: job.id,
-          skill_id: null,
-          skill_name: skill,
-          is_required: true
-        }));
-        const { error: skillsError } = await supabase
-          .from('job_skills')
-          .insert(jobSkillsToInsert);
-        if (skillsError) {
-          console.error('Error updating job skills:', skillsError);
+        const jobSkillsToInsert = [];
+        
+        for (const skillName of filteredSkills) {
+          // 1. Check if skill exists
+          let { data: skillRow, error: skillLookupError } = await supabase
+            .from('skills')
+            .select('id')
+            .eq('name', skillName)
+            .maybeSingle();
+          
+          if (skillLookupError) throw skillLookupError;
+          
+          let skillId;
+          if (!skillRow) {
+            // 2. Insert new skill
+            const { data: newSkill, error: skillInsertError } = await supabase
+              .from('skills')
+              .insert({ name: skillName })
+              .select()
+              .single();
+            
+            if (skillInsertError) throw skillInsertError;
+            skillId = newSkill.id;
+          } else {
+            skillId = skillRow.id;
+          }
+          
+          // 3. Add to job_skills (with both skill_id and skill_name)
+          jobSkillsToInsert.push({
+            job_id: job.id,
+            skill_id: skillId,
+            skill_name: skillName,
+            is_required: true
+          });
+        }
+        
+        if (jobSkillsToInsert.length > 0) {
+          const { error: skillsError } = await supabase
+            .from('job_skills')
+            .insert(jobSkillsToInsert);
+          
+          if (skillsError) {
+            console.error('Error updating job skills:', skillsError);
+            throw skillsError;
+          }
         }
       }
       message = 'Job updated successfully!';
