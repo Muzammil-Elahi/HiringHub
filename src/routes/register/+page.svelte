@@ -1,171 +1,267 @@
 <script lang="ts">
-  import { supabase } from '$lib/supabaseClient'; // Path updated
-  import { selectedAccountType, type AccountType } from '$lib/stores/registrationStore'; // Path updated
-  import JobSeekerRegisterForm from '$lib/components/auth/JobSeekerRegisterForm.svelte'; // Path updated
-  import HiringManagerRegisterForm from '$lib/components/auth/HiringManagerRegisterForm.svelte'; // Path updated
-  // import { navigateTo } from '../lib/stores/navigationStore'; // Remove old navigation
-
+  import { goto } from '$app/navigation';
+  import { supabase } from '$lib/supabaseClient';
+  import authStore from '$lib/stores/authStore';
+  import userStore from '$lib/stores/userStore';
+  
+  // Form fields
+  let email = '';
+  let password = '';
+  let confirmPassword = '';
+  let accountType: 'job_seeker' | 'hiring_manager' = 'job_seeker';
+  
+  // UI state
   let loading = false;
-  let message = '';
-
-  function selectAccountType(type: AccountType | null) { // Allow null to reset
-    selectedAccountType.set(type);
-    message = '';
+  let error = '';
+  
+  async function handleRegister() {
+    // Basic validation
+    if (!email || !password || !confirmPassword) {
+      error = 'All fields are required';
+      return;
+    }
+    
+    if (password !== confirmPassword) {
+      error = 'Passwords do not match';
+      return;
+    }
+    
+    if (password.length < 6) {
+      error = 'Password must be at least 6 characters long';
+      return;
+    }
+    
+    loading = true;
+    error = '';
+    
+    try {
+      // Use the auth store for registration
+      const result = await authStore.register(email, password);
+      
+      if (!result.success) {
+        throw new Error(result.error.message || 'Registration failed');
+      }
+      
+      const userId = result.data.user?.id;
+      if (!userId) {
+        throw new Error('Failed to get user ID after registration');
+      }
+      
+      // Create profile for the new user
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          user_id: userId,
+          account_type: accountType,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+        
+      if (profileError) throw profileError;
+      
+      // Success - just keep loading state active
+      // The redirection will be handled by the layout component
+      console.log('Registration successful, waiting for redirect...');
+      
+    } catch (err: any) {
+      console.error('Registration error:', err);
+      error = err.message || 'An error occurred during registration';
+      loading = false;
+    }
   }
 </script>
 
-<div class="container auth-form">
-  <h2 class="text-center">Create Your Account</h2>
-
-  {#if $selectedAccountType === null}
-    <p class="text-center">Please select your account type:</p>
-    <div class="account-type-selector">
-      <button class="btn" on:click={() => selectAccountType('job_seeker')}>
-        I'm a Job Seeker
-      </button>
-      <button class="btn" on:click={() => selectAccountType('hiring_manager')}>
-        I'm Hiring
-      </button>
+<div class="container auth-page">
+  <div class="auth-card">
+    <h2>Register for HiringHub</h2>
+    
+    {#if error}
+      <div class="error-message">
+        <p>{error}</p>
+      </div>
+    {/if}
+    
+    <form on:submit|preventDefault={handleRegister}>
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input 
+          id="email" 
+          type="email" 
+          bind:value={email} 
+          placeholder="your@email.com" 
+          disabled={loading}
+          required
+        />
+      </div>
+      
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input 
+          id="password" 
+          type="password" 
+          bind:value={password} 
+          placeholder="Minimum 6 characters" 
+          disabled={loading}
+          required
+        />
+      </div>
+      
+      <div class="form-group">
+        <label for="confirmPassword">Confirm Password</label>
+        <input 
+          id="confirmPassword" 
+          type="password" 
+          bind:value={confirmPassword} 
+          placeholder="Enter password again" 
+          disabled={loading}
+          required
+        />
+      </div>
+      
+      <div class="form-group">
+        <label>Account Type</label>
+        <div class="radio-group">
+          <label class="radio-label">
+            <input 
+              type="radio" 
+              bind:group={accountType} 
+              value="job_seeker" 
+              disabled={loading}
+            />
+            Job Seeker
+          </label>
+          <label class="radio-label">
+            <input 
+              type="radio" 
+              bind:group={accountType} 
+              value="hiring_manager" 
+              disabled={loading}
+            />
+            Hiring Manager
+          </label>
+        </div>
+      </div>
+      
+      <div class="form-actions">
+        <button type="submit" class="btn-primary" disabled={loading}>
+          {loading ? 'Registering...' : 'Create Account'}
+        </button>
+      </div>
+    </form>
+    
+    <div class="auth-footer">
+      <p>Already have an account? <a href="/login">Log In</a></p>
     </div>
-    <p class="text-center mt-4">
-      Already have an account? <a href="/login">Log in</a> <!-- Standard link -->
-    </p>
-  {:else}
-    <p class="text-center">
-      Registering as a {$selectedAccountType === 'job_seeker' ? 'Job Seeker' : 'Hiring Manager'}
-      <button class="btn-link" on:click={() => selectAccountType(null)}>(Change)</button>
-    </p>
-
-    {#if message}
-      <p class="message {message.includes('failed') ? 'error' : 'success'}" role="alert">{message}</p>
-    {/if}
-
-    {#if $selectedAccountType === 'job_seeker'}
-      <JobSeekerRegisterForm />
-    {:else if $selectedAccountType === 'hiring_manager'}
-      <HiringManagerRegisterForm />
-    {/if}
-
-    <p class="text-center mt-4">
-      Already have an account? <a href="/login">Log in</a> <!-- Standard link -->
-    </p>
-  {/if}
-
+  </div>
 </div>
 
 <style>
-  /* Keep existing styles */
-  .auth-form {
-    max-width: 400px;
-    margin: var(--spacing-xl) auto;
-    padding: var(--spacing-lg);
+  .auth-page {
+    max-width: 500px;
+    margin: 2rem auto;
+  }
+  
+  .auth-card {
     background-color: var(--surface-color);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
-    box-shadow: var(--box-shadow);
+    padding: var(--spacing-lg);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   }
-
-  .account-type-selector {
-    display: flex;
-    justify-content: space-around;
+  
+  h2 {
+    text-align: center;
     margin-bottom: var(--spacing-lg);
-    gap: var(--spacing-md);
-  }
-
-  .account-type-selector button {
-     flex: 1;
-     padding: var(--spacing-md); /* Make buttons larger */
-  }
-
-  .btn-link {
-    background: none;
-    border: none;
     color: var(--primary-color);
-    text-decoration: underline;
-    cursor: pointer;
-    font-size: var(--font-size-sm);
-    padding: 0;
-    margin-left: var(--spacing-xs);
   }
-
-
+  
   .form-group {
     margin-bottom: var(--spacing-md);
   }
-
+  
   .form-group label {
     display: block;
     margin-bottom: var(--spacing-xs);
     font-weight: 500;
   }
-
-  .form-group input {
+  
+  .form-group input[type="email"],
+  .form-group input[type="password"] {
     width: 100%;
-    padding: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     font-size: var(--font-size-base);
   }
-
+  
   .form-group input:focus {
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2); /* Blue focus ring */
+    box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.2);
   }
-
-  /* Button styles might need adjustments if you have global button styles */
-  button.btn {
-    /* Default button styles defined in app.css will apply */
-     /* Add any overrides specific to .btn class here if needed */
+  
+  .radio-group {
+    display: flex;
+    gap: var(--spacing-lg);
+    margin-top: var(--spacing-xs);
   }
-
-  /* Use more specific selectors if .btn might clash */
-  .account-type-selector button.btn {
-     /* Styles specific to account type buttons */
-  }
-
-
-  button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  /* Keep message styles */
-  .message {
-    padding: var(--spacing-sm);
-    margin-bottom: var(--spacing-md);
-    border-radius: var(--border-radius);
-    text-align: center;
-  }
-
-  .message.error {
-    background-color: var(--error-bg-color, #fee2e2); /* Added fallbacks */
-    color: var(--error-text-color, #b91c1c);
-    border: 1px solid var(--error-border-color, #fca5a5);
-  }
-
-  .message.success {
-    background-color: var(--success-bg-color, #dcfce7);
-    color: var(--success-text-color, #166534);
-    border: 1px solid var(--success-border-color, #86efac);
-  }
-
-  /* Ensure link styling is consistent if needed */
-  a {
-    color: var(--primary-color);
-    text-decoration: none;
+  
+  .radio-label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
     cursor: pointer;
   }
-
-  a:hover {
+  
+  .form-actions {
+    margin-top: var(--spacing-lg);
+  }
+  
+  .btn-primary {
+    width: 100%;
+    padding: var(--spacing-sm) var(--spacing-md);
+    background-color: var(--primary-color);
+    color: var(--primary-contrast-color);
+    border: none;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.3s;
+  }
+  
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--primary-color-dark);
+  }
+  
+  .btn-primary:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  
+  .auth-footer {
+    margin-top: var(--spacing-lg);
+    text-align: center;
+    font-size: var(--font-size-sm);
+  }
+  
+  .auth-footer a {
+    color: var(--primary-color);
+    text-decoration: none;
+  }
+  
+  .auth-footer a:hover {
     text-decoration: underline;
   }
-
-  .text-center {
-    text-align: center;
+  
+  .error-message {
+    background-color: var(--error-bg-color);
+    color: var(--error-text-color);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-md);
   }
-
-  .mt-4 {
-      margin-top: var(--spacing-lg);
+  
+  .error-message p {
+    margin: 0;
   }
 </style> 
