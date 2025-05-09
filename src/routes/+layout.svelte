@@ -5,6 +5,8 @@
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import LoadingScreen from '$lib/components/LoadingScreen.svelte';
+	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import themeStore from '$lib/stores/themeStore';
 
 	// Import global styles
 	import "../app.css"; // Use relative path from routes directory
@@ -56,6 +58,9 @@
 
 	onMount(() => {
 		if (!browser) return;
+
+		// Initialize theme
+		themeStore.initialize();
 
 		// Set the original path for this page load - important for redirect handling
 		if (originalPathForThisLoad === null) {
@@ -244,18 +249,26 @@
 				<span class="notification-badge">{unreadMessagesCount}</span>
 			{/if}
 		</a>
-		<!-- Use a button for actions like logout -->
-		<button type="button" class="logout-link" on:click={() => {
-			authStore.logout().then(() => {
-				userStore.reset();
-				goto('/');
-			}).catch(err => console.error('Logout error:', err));
-		}}>Logout</button>
+		
+		<div class="nav-right">
+			<!-- Theme toggle now to the left of logout -->
+			<div class="theme-toggle-wrapper">
+				<ThemeToggle />
+			</div>
+			<!-- Use a button for actions like logout -->
+			<button type="button" class="logout-link" on:click={handleLogout}>Logout</button>
+		</div>
 	{:else}
 		<!-- Logged-out user links -->
 		<a href="/">Home</a>
 		<a href="/login">Login</a>
 		<a href="/register">Register</a>
+		
+		<div class="nav-right">
+			<div class="theme-toggle-wrapper">
+				<ThemeToggle />
+			</div>
+		</div>
 	{/if}
 </nav>
 
@@ -282,10 +295,9 @@
 			cursor: pointer;
 			outline: inherit;
 			/* Styling */
-			margin-left: auto; /* Push logout link to the right */
 			color: var(--error-text-color, #b91c1c);
 			font-weight: 500;
-			margin-right: var(--spacing-md, 24px); /* Match spacing */
+			margin-left: var(--spacing-md, 24px); /* Space from theme toggle */
     }
     nav button.logout-link:hover {
         color: var(--error-border-color, #fca5a5);
@@ -298,6 +310,12 @@
 		margin-bottom: var(--spacing-lg, 32px);
         display: flex; /* Use flexbox for alignment */
         align-items: center;
+	}
+
+	.nav-right {
+		margin-left: auto;
+		display: flex;
+		align-items: center;
 	}
 
 	nav a {
@@ -361,5 +379,10 @@
         justify-content: center;
         font-weight: bold;
     }
-
+	
+	/* Theme Toggle styles */
+	.theme-toggle-wrapper {
+		display: flex;
+		align-items: center;
+	}
 </style>
