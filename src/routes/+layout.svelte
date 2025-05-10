@@ -252,21 +252,26 @@
 <nav>
 	{#if $userStore.loggedIn}
 		<!-- Logged-in user links -->
-		<a href="/">Home</a>
-		<a href={profileLink}>Profile</a>
-		<!-- Add links based on account type -->
-		{#if $userStore.profile?.account_type === 'hiring_manager'}
-			 <a href={postJobLink}>Post Job</a>
-		{:else if $userStore.profile?.account_type === 'job_seeker'}
-			 <a href={jobBoardLink}>Job Board</a>
-		{/if}
-		<!-- Add messages link for all users with unread notification -->
-		<a href="/messages" class="messages-link">
-			Messages
-			{#if unreadMessagesCount > 0}
-				<span class="notification-badge">{unreadMessagesCount}</span>
+		<div class="nav-left">
+			<a href={profileLink}>Profile</a>
+			<!-- Add links based on account type -->
+			{#if $userStore.profile?.account_type === 'hiring_manager'}
+				 <a href={postJobLink}>Post Job</a>
+			{:else if $userStore.profile?.account_type === 'job_seeker'}
+				 <a href={jobBoardLink}>Job Board</a>
 			{/if}
-		</a>
+			<!-- Add messages link for all users with unread notification -->
+			<a href="/messages" class="messages-link">
+				Messages
+				{#if unreadMessagesCount > 0}
+					<span class="notification-badge">{unreadMessagesCount}</span>
+				{/if}
+			</a>
+		</div>
+		
+		<div class="nav-center">
+			<a href="/" class="nav-title">HiringHub</a>
+		</div>
 		
 		<div class="nav-right">
 			<!-- Theme toggle now to the left of logout -->
@@ -278,9 +283,14 @@
 		</div>
 	{:else}
 		<!-- Logged-out user links -->
-		<a href="/">Home</a>
-		<a href="/login">Login</a>
-		<a href="/register">Register</a>
+		<div class="nav-left">
+			<a href="/login">Login</a>
+			<a href="/register">Register</a>
+		</div>
+		
+		<div class="nav-center">
+			<a href="/" class="nav-title">HiringHub</a>
+		</div>
 		
 		<div class="nav-right">
 			<div class="theme-toggle-wrapper">
@@ -328,16 +338,34 @@
 		margin-bottom: var(--spacing-lg, 32px);
         display: flex; /* Use flexbox for alignment */
         align-items: center;
+        justify-content: space-between;
+	}
+
+	.nav-left {
+		display: flex;
+		align-items: center;
+		gap: var(--spacing-md);
+	}
+
+	.nav-center {
+		position: absolute;
+		left: 50%;
+		transform: translateX(-50%);
+	}
+
+	.nav-title {
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: var(--primary-color);
+		text-decoration: none;
 	}
 
 	.nav-right {
-		margin-left: auto;
 		display: flex;
 		align-items: center;
 	}
 
 	nav a {
-		margin-right: var(--spacing-md, 24px);
 		font-weight: 500;
 		color: var(--primary-color, #2563eb);
 		text-decoration: none;

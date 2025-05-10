@@ -12,6 +12,11 @@
 </script>
 
 <div class="container">
+	<div class="project-title">
+		<h1 class="title-text">HiringHub</h1>
+		<p class="title-tagline">Where Talent Meets Demand</p>
+	</div>
+	
 	<header class="hero">
 		<h1>Find Your Perfect Match: AI-Powered Job Matching That Works</h1>
 		<p class="subheadline">
@@ -134,9 +139,31 @@
 
 <style>
   /* Home page specific styles */
+  .project-title {
+    text-align: center;
+    padding: var(--spacing-md) 0 var(--spacing-xs);
+    margin-top: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+  }
+
+  .title-text {
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: var(--spacing-xs);
+    letter-spacing: -0.02em;
+  }
+
+  .title-tagline {
+    font-size: 1.25rem;
+    color: var(--text-muted-color);
+    font-weight: 500;
+    margin-bottom: var(--spacing-xs);
+  }
+  
   .hero {
     text-align: center;
-    padding: var(--spacing-xl) 0;
+    padding: var(--spacing-md) 0 var(--spacing-xl);
     margin-bottom: var(--spacing-lg);
   }
 
