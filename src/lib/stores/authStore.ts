@@ -96,6 +96,52 @@ const createAuthStore = () => {
       }
       // Don't set loading to false on success - handled elsewhere
     },
+    // Request password reset email
+    resetPassword: async (email: string) => {
+      update(state => ({ ...state, loading: true, error: null }));
+      try {
+        // The redirectTo option can be set to specify where to redirect after password reset
+        // By default, Supabase redirects to the site URL if not specified
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: browser ? `${window.location.origin}/reset-password/confirm` : undefined
+        });
+        
+        if (error) {
+          update(state => ({ ...state, error: error as Error, loading: false }));
+          return { success: false, error };
+        }
+        
+        return { success: true };
+      } catch (error) {
+        console.error('Password reset error:', error);
+        update(state => ({ ...state, error: error as Error, loading: false }));
+        return { success: false, error };
+      } finally {
+        update(state => ({ ...state, loading: false }));
+      }
+    },
+    // Update password after reset
+    updatePassword: async (newPassword: string) => {
+      update(state => ({ ...state, loading: true, error: null }));
+      try {
+        const { error } = await supabase.auth.updateUser({
+          password: newPassword
+        });
+        
+        if (error) {
+          update(state => ({ ...state, error: error as Error, loading: false }));
+          return { success: false, error };
+        }
+        
+        return { success: true };
+      } catch (error) {
+        console.error('Password update error:', error);
+        update(state => ({ ...state, error: error as Error, loading: false }));
+        return { success: false, error };
+      } finally {
+        update(state => ({ ...state, loading: false }));
+      }
+    },
     // Sign out
     logout: async () => {
       update(state => ({ ...state, loading: true, error: null }));
