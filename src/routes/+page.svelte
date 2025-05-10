@@ -132,4 +132,182 @@
 	</footer>
 </div>
 
-<!-- No <style> block needed if styles are global in app.css or layout -->
+<style>
+  /* Home page specific styles */
+  .hero {
+    text-align: center;
+    padding: var(--spacing-xl) 0;
+    margin-bottom: var(--spacing-lg);
+  }
+
+  h1 {
+    font-size: 2.5rem;
+    margin-bottom: var(--spacing-md);
+    color: var(--primary-color);
+  }
+
+  .subheadline {
+    font-size: var(--font-size-lg);
+    color: var(--text-muted-color);
+    margin-bottom: var(--spacing-lg);
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .cta-buttons {
+    display: flex;
+    justify-content: center;
+    gap: var(--spacing-md);
+    margin-top: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+  }
+
+  /* Button styles that should be consistent with the rest of the site */
+  .button-primary {
+    padding: var(--spacing-sm) var(--spacing-lg);
+    background-color: var(--primary-color);
+    color: var(--primary-contrast-color);
+    border: none;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: var(--font-size-base);
+    font-weight: 500;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    transition: background-color 0.2s ease;
+  }
+  
+  .button-primary:hover {
+    background-color: var(--primary-color-dark);
+    text-decoration: none;
+  }
+  
+  .button-secondary {
+    padding: var(--spacing-sm) var(--spacing-lg);
+    background-color: var(--background-color, white);
+    color: var(--primary-color);
+    border: 1px solid var(--primary-color);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: var(--font-size-base);
+    font-weight: 500;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+  }
+  
+  .button-secondary:hover {
+    background-color: var(--primary-color-light);
+    text-decoration: none;
+  }
+
+  .button-outline {
+    padding: var(--spacing-sm) var(--spacing-lg);
+    background-color: transparent;
+    color: white;
+    border: 2px solid white;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: var(--font-size-base);
+    font-weight: 500;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    transition: background-color 0.2s ease;
+  }
+  
+  .button-outline:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    text-decoration: none;
+  }
+
+  /* Text utilities */
+  .italic {
+    font-style: italic;
+  }
+
+  .text-lg {
+    font-size: var(--font-size-lg);
+  }
+
+  .text-white {
+    color: white;
+  }
+
+  /* Section styles */
+  .benefits, .how-it-works {
+    margin-bottom: var(--spacing-xl);
+  }
+
+  .benefit-group, .how-group {
+    padding: var(--spacing-md);
+  }
+
+  .benefit-group h3, .how-group h3 {
+    margin-bottom: var(--spacing-md);
+    color: var(--primary-color);
+  }
+
+  .benefit-group ul, .how-group ol {
+    padding-left: var(--spacing-lg);
+  }
+
+  .benefit-group li, .how-group li {
+    margin-bottom: var(--spacing-md);
+  }
+
+  /* Testimonials */
+  .testimonials {
+    margin-bottom: var(--spacing-xl);
+  }
+
+  .testimonial-card {
+    padding: var(--spacing-lg);
+    background-color: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+  }
+
+  .testimonial-card blockquote {
+    font-style: italic;
+    margin-bottom: var(--spacing-md);
+  }
+
+  .testimonial-card cite {
+    font-weight: 500;
+    color: var(--primary-color);
+  }
+
+  /* Final CTA section */
+  .final-cta {
+    padding: var(--spacing-xl) var(--spacing-lg);
+    background-color: var(--primary-color);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-xl);
+  }
+
+  .final-cta h2 {
+    color: white;
+    margin-bottom: var(--spacing-md);
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .cta-buttons {
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      font-size: 2rem;
+    }
+
+    .benefit-group, .how-group {
+      margin-bottom: var(--spacing-md);
+    }
+  }
+</style>

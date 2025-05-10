@@ -26,16 +26,23 @@ const createAuthStore = () => {
     checkAuth: async () => {
       if (!browser) return;
       
-      update(state => ({ ...state, loading: true }));
+      update(state => ({ ...state, loading: true, error: null }));
       try {
         const { data, error } = await supabase.auth.getSession();
         if (error) throw error;
         update(state => ({ ...state, session: data.session }));
       } catch (error) {
         console.error('Error checking auth:', error);
-        update(state => ({ ...state, error: error as Error }));
+        update(state => ({ ...state, error: error as Error, loading: false }));
       } finally {
-        update(state => ({ ...state, loading: false }));
+        // Only set loading to false if there's a session
+        // This ensures we don't show loading screen longer than needed
+        update(state => {
+          if (state.error || !state.session) {
+            return { ...state, loading: false };
+          }
+          return state;
+        });
       }
     },
     // Sign in with email/password
@@ -47,19 +54,22 @@ const createAuthStore = () => {
           password
         });
         
-        if (error) throw error;
+        if (error) {
+          // Immediately turn off loading if there's an error
+          update(state => ({ ...state, error: error as Error, loading: false }));
+          return { success: false, error };
+        }
         
         update(state => ({ ...state, session: data.session }));
         return { success: true, data };
       } catch (error) {
         console.error('Login error:', error);
-        update(state => ({ ...state, error: error as Error }));
+        // Ensure loading is turned off on error
+        update(state => ({ ...state, error: error as Error, loading: false }));
         return { success: false, error };
-      } finally {
-        // Don't turn off loading here - let the layout component handle this
-        // after redirection has been handled
-        // The layout will set loading to false after profile fetch and redirect
       }
+      // Don't set loading to false on success - the layout component handles this
+      // after profile fetch and redirect
     },
     // Sign up with email/password
     register: async (email: string, password: string) => {
@@ -70,19 +80,21 @@ const createAuthStore = () => {
           password
         });
         
-        if (error) throw error;
+        if (error) {
+          // Immediately turn off loading if there's an error
+          update(state => ({ ...state, error: error as Error, loading: false }));
+          return { success: false, error };
+        }
         
         update(state => ({ ...state, session: data.session }));
         return { success: true, data };
       } catch (error) {
         console.error('Registration error:', error);
-        update(state => ({ ...state, error: error as Error }));
+        // Ensure loading is turned off on error
+        update(state => ({ ...state, error: error as Error, loading: false }));
         return { success: false, error };
-      } finally {
-        setTimeout(() => {
-          update(state => ({ ...state, loading: false }));
-        }, 1000); // Small delay to ensure redirect happens
       }
+      // Don't set loading to false on success - handled elsewhere
     },
     // Sign out
     logout: async () => {
@@ -94,7 +106,7 @@ const createAuthStore = () => {
         return { success: true };
       } catch (error) {
         console.error('Logout error:', error);
-        update(state => ({ ...state, error: error as Error }));
+        update(state => ({ ...state, error: error as Error, loading: false }));
         return { success: false, error };
       } finally {
         update(state => ({ ...state, loading: false }));

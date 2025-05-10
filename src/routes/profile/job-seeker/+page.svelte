@@ -494,6 +494,7 @@
           </div>
         {/if}
 
+        <!-- Resume Section -->
         {#if resumeUrl}
           <div class="profile-section">
             <h4>Resume</h4>
@@ -564,10 +565,8 @@
         <label for="resume">Resume (PDF Only)</label>
         {#if resumeUrl}
             <div class="current-resume">
-              <p>Current Resume: <a href={resumeUrl} target="_blank" rel="noopener noreferrer">View/Download</a></p>
-              <button type="button" class="btn-text-small delete-link" on:click={deleteResume}>
-                Delete Resume
-              </button>
+              <p>Current Resume: <a href={resumeUrl} target="_blank" rel="noopener noreferrer">View Resume</a></p>
+              <button type="button" class="delete-link" on:click={deleteResume}>Delete Resume</button>
             </div>
         {:else}
             <p>No resume uploaded.</p>
@@ -888,6 +887,16 @@
     display: inline-flex;
     align-items: center;
     color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius);
+    transition: background-color 0.2s ease;
+  }
+
+  .resume-link:hover {
+    background-color: var(--primary-color-light, #e0f2fe);
+    text-decoration: underline;
   }
 
   .resume-format {
@@ -902,92 +911,133 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: var(--spacing-md);
-    background-color: var(--surface-secondary-color, #f3f4f6);
+    border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
-    text-align: center;
+    padding: var(--spacing-md);
+    background-color: var(--surface-secondary-color, #f9fafb);
   }
 
   .pdf-icon {
-    width: 60px;
-    height: 60px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: #e53935;
+    background-color: #f40f02;
     color: white;
-    border-radius: 4px;
     font-weight: bold;
+    padding: 1rem;
+    border-radius: 4px;
     margin-bottom: var(--spacing-sm);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
 
   .resume-filename {
+    font-size: 0.9em;
     margin: var(--spacing-xs) 0;
-    font-size: 0.9em;
-  }
-
-  .download-button {
-    display: inline-flex;
-    align-items: center;
-    background-color: var(--primary-color);
-    color: white;
-    padding: 0.4em 0.8em;
-    border-radius: var(--border-radius);
-    text-decoration: none;
-    font-size: 0.9em;
-    margin-top: var(--spacing-sm);
-  }
-
-  .download-button:hover {
-    background-color: var(--primary-color-dark);
-    text-decoration: none;
-  }
-
-  .download-icon {
-    margin-right: var(--spacing-xs);
-  }
-
-  .delete-button {
-    display: inline-flex;
-    align-items: center;
-    background-color: var(--error-bg-color, #fee2e2);
-    color: var(--error-text-color, #b91c1c);
-    padding: 0.4em 0.8em;
-    border-radius: var(--border-radius);
-    border: 1px solid var(--error-border-color, #fca5a5);
-    text-decoration: none;
-    font-size: 0.9em;
-    margin-top: var(--spacing-sm);
-    cursor: pointer;
-  }
-
-  .delete-button:hover {
-    background-color: var(--error-border-color, #fca5a5);
-    text-decoration: none;
-  }
-
-  .delete-icon {
-    margin-right: var(--spacing-xs);
+    text-align: center;
+    word-break: break-word;
+    max-width: 100%;
   }
 
   .resume-buttons {
     display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xs);
+    gap: var(--spacing-md);
+    margin-top: var(--spacing-sm);
+    width: 100%;
+    justify-content: center;
+  }
+
+  .download-button, .delete-button {
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
+    padding: var(--spacing-xs) var(--spacing-md);
+    border-radius: var(--border-radius);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    transition: all 0.2s ease;
+    text-decoration: none;
   }
 
-  .delete-link {
+  .download-button {
+    background-color: var(--primary-color);
+    color: var(--primary-contrast-color, white);
+    border: none;
+  }
+
+  .download-button:hover {
+    background-color: var(--primary-color-dark);
+  }
+
+  .delete-button {
+    background-color: var(--error-bg-color, #fee2e2);
     color: var(--error-text-color, #b91c1c);
+    border: 1px solid var(--error-border-color, #fca5a5);
+    cursor: pointer;
   }
 
-  .delete-link:hover {
-    color: var(--error-border-color, #fca5a5);
+  .delete-button:hover {
+    background-color: var(--error-text-color, #b91c1c);
+    color: white;
   }
 
+  .download-icon, .delete-icon {
+    margin-right: var(--spacing-xs);
+  }
+
+  /* Edit mode resume styling */
   .current-resume {
     display: flex;
     align-items: center;
-    gap: var(--spacing-md);
+    justify-content: space-between;
+    padding: var(--spacing-sm);
+    background-color: var(--surface-secondary-color, #f9fafb);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .current-resume p {
+    margin: 0;
+  }
+
+  .current-resume a {
+    color: var(--primary-color);
+    font-weight: 500;
+    text-decoration: none;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius);
+    transition: background-color 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .current-resume a::before {
+    content: "📄";
+    margin-right: var(--spacing-xs);
+  }
+
+  .current-resume a:hover {
+    background-color: var(--primary-color-light, #e0f2fe);
+    text-decoration: underline;
+  }
+
+  .delete-link {
+    background: none;
+    color: var(--error-text-color, #b91c1c);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid transparent;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .delete-link:hover {
+    background-color: var(--error-bg-color, #fee2e2);
+    border-color: var(--error-border-color, #fca5a5);
+    text-decoration: none;
+  }
+
+  .delete-link::before {
+    content: "🗑️";
+    margin-right: var(--spacing-xs);
   }
 </style> 

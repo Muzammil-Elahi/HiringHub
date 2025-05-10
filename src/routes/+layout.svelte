@@ -227,8 +227,8 @@
 	$: postJobLink = '/jobs/post';
 </script>
 
-{#if $authStore.loading}
-	<LoadingScreen />
+{#if $authStore.loading && !$authStore.error}
+	<LoadingScreen message={profileLoading ? "Loading profile..." : "Processing authentication..."} />
 {/if}
 
 <nav>
