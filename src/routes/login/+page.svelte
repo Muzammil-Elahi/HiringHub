@@ -82,7 +82,11 @@
       
       if (!result.success) {
         // Format error messages in a user-friendly way
-        const errorMessage = result.error.message || 'Login failed';
+        const errorMessage = result.error instanceof Error 
+          ? result.error.message 
+          : typeof result.error === 'object' && result.error && 'message' in result.error
+            ? (result.error as { message: string }).message
+            : 'Login failed';
         
         if (errorMessage.toLowerCase().includes('invalid login')) {
           error = 'The email or password you entered is incorrect';

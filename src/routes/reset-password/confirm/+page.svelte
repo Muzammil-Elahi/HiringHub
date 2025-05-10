@@ -87,7 +87,11 @@
       
       if (!result.success) {
         // Format error messages
-        const errorMessage = result.error.message || 'Password update failed';
+        const errorMessage = result.error instanceof Error 
+          ? result.error.message 
+          : typeof result.error === 'object' && result.error && 'message' in result.error
+            ? (result.error as { message: string }).message
+            : 'Password update failed';
         
         if (errorMessage.toLowerCase().includes('password')) {
           passwordError = errorMessage;
