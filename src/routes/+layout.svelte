@@ -143,16 +143,25 @@
 						console.log(`Profile loaded: ${profileData?.account_type || 'null'}`);
 						
 						// Handle redirection AFTER profile is loaded successfully
-						if (profileData && (currentPath === '/login' || currentPath === '/register')) {
-							// Determine the correct profile path based on account type
-							const targetProfilePath = profileData.account_type === 'job_seeker' 
-								? '/profile/job-seeker'
-								: profileData.account_type === 'hiring_manager' 
-									? '/profile/hiring-manager'
-									: '/profile';
-							
-							console.log(`Redirecting to ${targetProfilePath} after login (Profile loaded)`);
-							await goto(targetProfilePath, { replaceState: true });
+						if (profileData) {
+							if (currentPath === '/login' || currentPath === '/register') {
+								// Determine the correct profile path based on account type
+								const targetProfilePath = profileData.account_type === 'job_seeker' 
+									? '/profile/job-seeker'
+									: profileData.account_type === 'hiring_manager' 
+										? '/profile/hiring-manager'
+										: '/profile';
+								
+								console.log(`Redirecting to ${targetProfilePath} after login (Profile loaded)`);
+								await goto(targetProfilePath, { replaceState: true });
+							} 
+							// Return user to their original page if they were redirected to login
+							else if (currentPath === '/login' && originalPathForThisLoad && 
+									 originalPathForThisLoad !== '/login' && 
+									 !originalPathForThisLoad.includes('/reset-password')) {
+								console.log(`Redirecting back to original path: ${originalPathForThisLoad}`);
+								goto(originalPathForThisLoad, { replaceState: true });
+							}
 						}
 					}
 				} catch (e) {
@@ -168,16 +177,25 @@
 				authStore.setLoading(false); // End loading state
 				
 				// Check if we need to redirect even with already loaded profile
-				if ($userStore.profile && (currentPath === '/login' || currentPath === '/register')) {
-					// Determine the correct profile path based on account type
-					const targetProfilePath = $userStore.profile.account_type === 'job_seeker' 
-						? '/profile/job-seeker'
-						: $userStore.profile.account_type === 'hiring_manager' 
-							? '/profile/hiring-manager'
-							: '/profile';
-					
-					console.log(`Redirecting to ${targetProfilePath} after login (Profile already loaded)`);
-					goto(targetProfilePath, { replaceState: true });
+				if ($userStore.profile) {
+					if (currentPath === '/login' || currentPath === '/register') {
+						// Determine the correct profile path based on account type
+						const targetProfilePath = $userStore.profile.account_type === 'job_seeker' 
+							? '/profile/job-seeker'
+							: $userStore.profile.account_type === 'hiring_manager' 
+								? '/profile/hiring-manager'
+								: '/profile';
+						
+						console.log(`Redirecting to ${targetProfilePath} after login (Profile already loaded)`);
+						goto(targetProfilePath, { replaceState: true });
+					}
+					// Return user to their original page if they were redirected to login
+					else if (currentPath === '/login' && originalPathForThisLoad && 
+							 originalPathForThisLoad !== '/login' && 
+							 !originalPathForThisLoad.includes('/reset-password')) {
+						console.log(`Redirecting back to original path: ${originalPathForThisLoad}`);
+						goto(originalPathForThisLoad, { replaceState: true });
+					}
 				}
 			}
 			

@@ -30,7 +30,16 @@ const createAuthStore = () => {
       try {
         const { data, error } = await supabase.auth.getSession();
         if (error) throw error;
+        
         update(state => ({ ...state, session: data.session }));
+        
+        // Return early if no session - don't redirect in this case
+        if (!data.session) {
+          update(state => ({ ...state, loading: false }));
+          return;
+        }
+        
+        // Session exists, continue with normal flow
       } catch (error) {
         console.error('Error checking auth:', error);
         update(state => ({ ...state, error: error as Error, loading: false }));
