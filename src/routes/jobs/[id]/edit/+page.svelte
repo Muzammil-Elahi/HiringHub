@@ -90,6 +90,32 @@
       messageType = 'error';
       return false;
     }
+    
+    // Salary validation
+    if (salary_min !== null && salary_min < 1) {
+      message = 'Minimum salary must be at least 1';
+      messageType = 'error';
+      return false;
+    }
+    
+    if (salary_min !== null && salary_min > 999999) {
+      message = 'Minimum salary cannot exceed 999,999';
+      messageType = 'error';
+      return false;
+    }
+    
+    if (salary_max !== null && salary_max < 1) {
+      message = 'Maximum salary must be at least 1';
+      messageType = 'error';
+      return false;
+    }
+    
+    if (salary_max !== null && salary_max > 999999) {
+      message = 'Maximum salary cannot exceed 999,999';
+      messageType = 'error';
+      return false;
+    }
+    
     if (salary_min !== null && salary_max !== null && salary_min > salary_max) {
       message = 'Minimum salary cannot be greater than maximum salary';
       messageType = 'error';
@@ -222,11 +248,11 @@
     <div class="form-row">
       <div class="form-group">
         <label for="salary-min">Minimum Salary</label>
-        <input id="salary-min" type="number" bind:value={salary_min} min="0" step="1000" disabled={loading} />
+        <input id="salary-min" type="number" bind:value={salary_min} min="1" max="999999" step="1000" disabled={loading} />
       </div>
       <div class="form-group">
         <label for="salary-max">Maximum Salary</label>
-        <input id="salary-max" type="number" bind:value={salary_max} min="0" step="1000" disabled={loading} />
+        <input id="salary-max" type="number" bind:value={salary_max} min="1" max="999999" step="1000" disabled={loading} />
       </div>
       <div class="form-group currency-select">
         <label for="salary-currency">Currency</label>
