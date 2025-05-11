@@ -243,6 +243,7 @@
 
 	$: jobBoardLink = '/jobs/board';
 	$: postJobLink = '/jobs/post';
+	$: applicationsLink = '/profile/job-seeker/applications';
 </script>
 
 {#if $authStore.loading && !$authStore.error}
@@ -259,6 +260,7 @@
 				 <a href={postJobLink}>Post Job</a>
 			{:else if $userStore.profile?.account_type === 'job_seeker'}
 				 <a href={jobBoardLink}>Job Board</a>
+				 <a href={applicationsLink}>Applications</a>
 			{/if}
 			<!-- Add messages link for all users with unread notification -->
 			<a href="/messages" class="messages-link">
