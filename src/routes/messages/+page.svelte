@@ -823,6 +823,12 @@
                     {/if}
                   </div>
                   
+                  {#if chat.job}
+                    <div class="chat-job-info">
+                      <span class="job-title-preview">{chat.job.title} at {chat.job.company_name}</span>
+                    </div>
+                  {/if}
+                  
                   <div class="chat-preview">
                     <span>{chat.last_message || 'New conversation'}</span>
                   </div>
@@ -839,33 +845,46 @@
   <section class="chat-main-section" aria-labelledby="current-chat-heading">
     {#if currentChat}
       <header class="chat-header">
-        <h2 id="current-chat-heading">
-          {#if isHiringManager}
-            <span>{currentChat.job_seeker?.full_name || 'Unknown User'}</span>
-          {:else}
-            <span>{currentChat.hiring_manager?.full_name || 'Unknown User'}</span>
-          {/if}
-        </h2>
-        
-        <div class="chat-actions">
-          <button 
-            class="call-button" 
-            on:click={() => initiateCall('audio')}
-            aria-label="Start audio call"
-            title="Start audio call"
-          >
-            <span aria-hidden="true">📞</span>
-          </button>
+        <div class="header-content">
+          <h2>{currentChat ? getOtherParticipant(currentChat).name : 'Select a conversation'}</h2>
           
-          <button 
-            class="call-button" 
-            on:click={() => initiateCall('video')}
-            aria-label="Start video call"
-            title="Start video call"
-          >
-            <span aria-hidden="true">📹</span>
-          </button>
+          {#if currentChat && currentChat.job}
+            <div class="job-info">
+              <a href="/jobs/{currentChat.job.id}" class="job-link">
+                {currentChat.job.title} at {currentChat.job.company_name}
+              </a>
+            </div>
+          {/if}
         </div>
+        
+        {#if currentChat}
+          <div class="chat-actions">
+            <!-- Only show call buttons for hiring managers -->
+            {#if isHiringManager}
+              <button 
+                type="button" 
+                class="call-button"
+                aria-label="Start audio call"
+                on:click={() => startCall('audio')}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                </svg>
+              </button>
+              <button 
+                type="button" 
+                class="call-button"
+                aria-label="Start video call"
+                on:click={() => startCall('video')}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+              </button>
+            {/if}
+          </div>
+        {/if}
       </header>
       
       <div 
@@ -958,45 +977,72 @@
 
 <!-- Incoming call modal -->
 {#if incomingCall}
-  <div 
-    class="call-modal-overlay" 
-    role="alertdialog"
-    aria-labelledby="incoming-call-title"
-    aria-describedby="incoming-call-description"
-  >
+  <div class="call-modal-overlay" role="dialog" aria-labelledby="call-modal-title">
     <div class="call-modal">
-      <h3 id="incoming-call-title">Incoming {incomingCall.type} Call</h3>
-      <p id="incoming-call-description">{incomingCall.callerName} is calling you</p>
+      <h2 id="call-modal-title">Incoming {incomingCall.type} call</h2>
+      <p>From {incomingCall.callerName}</p>
+      
+      <div class="media-controls">
+        {#if incomingCall.type === 'video'}
+          <button 
+            type="button" 
+            class="toggle-button"
+            on:click={toggleCameraBeforeAnswer}
+            aria-pressed={!cameraEnabled}
+          >
+            {#if cameraEnabled}
+              <span>Turn Camera Off</span>
+            {:else}
+              <span>Turn Camera On</span>
+            {/if}
+          </button>
+        {/if}
+        
+        <button 
+          type="button" 
+          class="toggle-button"
+          on:click={toggleMicBeforeAnswer}
+          aria-pressed={!micEnabled}
+        >
+          {#if micEnabled}
+            <span>Mute Microphone</span>
+          {:else}
+            <span>Unmute Microphone</span>
+          {/if}
+        </button>
+      </div>
+      
       <div class="call-actions">
         <button 
-          class="answer-button" 
-          on:click={() => answerCall(incomingCall)}
-          aria-label="Answer {incomingCall.type} call"
+          type="button" 
+          class="answer-button"
+          on:click={() => acceptCall()}
         >
-          <span aria-hidden="true">✓</span> Answer
+          <span>Answer</span>
         </button>
+        
         <button 
-          class="decline-button" 
-          on:click={declineCall}
-          aria-label="Decline call"
+          type="button" 
+          class="decline-button"
+          on:click={rejectCall}
         >
-          <span aria-hidden="true">✗</span> Decline
+          <span>Decline</span>
         </button>
       </div>
     </div>
   </div>
 {/if}
 
-<!-- Video call modal component -->
+<!-- Active call component -->
 {#if isInCall}
-  <VideoCallModal 
-    {callType}
-    chatId={currentChat?.id}
-    partnerId={isHiringManager ? currentChat?.job_seeker?.user_id : currentChat?.hiring_manager?.user_id}
-    partnerName={isHiringManager ? currentChat?.job_seeker?.full_name : currentChat?.hiring_manager?.full_name}
-    {isCallInitiator}
-    {micEnabled}
-    {cameraEnabled}
+  <VideoCallModal
+    chatId={currentChat?.id || ''}
+    otherUserId={getOtherParticipant(currentChat).userId}
+    callType={callType}
+    isHiringManager={isHiringManager}
+    isInitiator={isCallInitiator}
+    initialMicEnabled={micEnabled}
+    initialCameraEnabled={cameraEnabled}
     on:endCall={handleCallEnded}
   />
 {/if}
@@ -1105,6 +1151,19 @@
     margin-bottom: 0.25rem;
   }
   
+  .chat-job-info {
+    font-size: 0.8rem;
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .job-title-preview {
+    color: var(--primary-color);
+    font-style: italic;
+  }
+  
   .chat-preview {
     font-size: 0.85rem;
     color: var(--text-color-secondary);
@@ -1139,9 +1198,29 @@
     border-bottom: 1px solid var(--border-color);
   }
   
+  .header-content {
+    display: flex;
+    flex-direction: column;
+  }
+  
   .chat-header h2 {
     margin: 0;
     font-size: 1.25rem;
+  }
+  
+  .job-info {
+    margin-top: 0.25rem;
+    font-size: 0.85rem;
+  }
+  
+  .job-link {
+    color: var(--primary-color);
+    text-decoration: underline;
+  }
+  
+  .job-link:hover {
+    text-decoration: underline;
+    opacity: 0.8;
   }
   
   .chat-actions {
@@ -1177,6 +1256,9 @@
     padding: 1rem;
     display: flex;
     flex-direction: column;
+    max-height: calc(100vh - 220px); /* Fixed height accounting for header and input area */
+    height: 100%;
+    scroll-behavior: smooth;
   }
   
   .message-list {

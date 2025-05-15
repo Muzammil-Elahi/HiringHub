@@ -290,6 +290,13 @@
     return 'Salary not specified';
   }
 
+  // Get the match level for styling
+  function getMatchLevel(percentage: number): string {
+    if (percentage >= 75) return 'high';
+    if (percentage >= 50) return 'medium';
+    return 'low';
+  }
+
   onMount(() => {
     // Initialize filters on mount
     initializeFilters();
@@ -398,21 +405,22 @@
           </button>
           
           {#if $userStore.loggedIn && $userStore.profile?.account_type === 'job_seeker'}
-            <div class="match-toggle">
-              <input 
-                type="checkbox" 
-                id="match-toggle" 
-                bind:checked={sortByMatch} 
-                on:change={toggleSortByMatch}
+            <div class="match-toggle-wrapper">
+              <button 
+                class="match-toggle-btn {sortByMatch ? 'active' : ''}"
+                on:click={toggleSortByMatch}
+                aria-pressed={sortByMatch}
                 aria-label="Sort by resume match percentage"
-              />
-              <label for="match-toggle">
-                Sort by Match
+              >
+                <span class="match-toggle-icon" aria-hidden="true">
+                  {#if sortByMatch}✓{/if}
+                </span>
+                <span>Sort by Match</span>
                 {#if resumeLoading}
                   <span class="loading-indicator" aria-hidden="true">⟳</span>
                   <span class="sr-only">Loading resume data</span>
                 {/if}
-              </label>
+              </button>
             </div>
           {/if}
         </div>
@@ -460,9 +468,9 @@
             >
               <div class="job-header">
                 <h3 class="job-title">{job.title}</h3>
-                {#if sortByMatch && matchPercentages[job.id] !== undefined}
+                {#if $userStore.loggedIn && $userStore.profile?.account_type === 'job_seeker' && matchPercentages[job.id] !== undefined}
                   <div 
-                    class="match-percentage" 
+                    class="match-percentage match-{getMatchLevel(matchPercentages[job.id])}" 
                     aria-label="Match percentage: {matchPercentages[job.id]}%"
                   >
                     <span class="match-label">Match</span>
@@ -683,57 +691,86 @@
     outline-offset: 2px;
   }
   
-  .match-toggle {
+  .match-toggle-wrapper {
+    display: flex;
+    align-items: center;
+  }
+  
+  .match-toggle-btn {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-  }
-  
-  .match-toggle input[type="checkbox"] {
-    appearance: none;
-    width: 1.25rem;
-    height: 1.25rem;
-    border: 1px solid var(--border-color);
-    border-radius: 0.25rem;
-    margin: 0;
-    padding: 0;
     background-color: var(--surface-color);
-    position: relative;
+    border: 1px solid var(--border-color);
+    padding: 0.5rem 1rem;
+    border-radius: var(--border-radius);
     cursor: pointer;
-    transition: background-color 0.2s, border-color 0.2s;
+    transition: all 0.2s ease;
+    font-weight: 500;
   }
   
-  .match-toggle input[type="checkbox"]:checked {
-    background-color: var(--primary-color);
+  .match-toggle-btn.active {
+    background-color: var(--primary-color-light, #e0f2fe);
     border-color: var(--primary-color);
+    color: var(--primary-color-dark);
   }
   
-  .match-toggle input[type="checkbox"]:checked::after {
-    content: '✓';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: white;
-    font-size: 0.8rem;
+  .match-toggle-btn:hover {
+    background-color: var(--hover-color);
   }
   
-  .match-toggle input[type="checkbox"]:focus {
+  .match-toggle-btn:focus {
     outline: 2px solid var(--focus-ring-color);
     outline-offset: 2px;
   }
   
-  .match-toggle label {
-    cursor: pointer;
-    display: flex;
+  .match-toggle-icon {
+    display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 1px solid currentColor;
+    border-radius: 0.25rem;
   }
   
-  .loading-indicator {
-    animation: spin 1s linear infinite;
-    display: inline-block;
-    font-size: 1rem;
+  .match-toggle-btn.active .match-toggle-icon {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+  }
+  
+  .match-percentage {
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--border-radius);
+    font-size: 0.875rem;
+    font-weight: 500;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 3.5rem;
+    color: white;
+  }
+  
+  .match-high {
+    background-color: var(--success-color, #10b981);
+  }
+  
+  .match-medium {
+    background-color: var(--warning-color, #f59e0b);
+  }
+  
+  .match-low {
+    background-color: var(--error-color, #ef4444);
+  }
+  
+  .match-label {
+    font-size: 0.75rem;
+    opacity: 0.8;
+  }
+  
+  .match-value {
+    font-weight: 700;
   }
   
   .resume-error {
@@ -813,28 +850,6 @@
     font-size: 1.25rem;
     color: var(--heading-color);
     font-weight: 600;
-  }
-  
-  .match-percentage {
-    background-color: var(--primary-color);
-    color: white;
-    padding: 0.25rem 0.5rem;
-    border-radius: var(--border-radius);
-    font-size: 0.875rem;
-    font-weight: 500;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-width: 3.5rem;
-  }
-  
-  .match-label {
-    font-size: 0.75rem;
-    opacity: 0.8;
-  }
-  
-  .match-value {
-    font-weight: 700;
   }
   
   .job-company {

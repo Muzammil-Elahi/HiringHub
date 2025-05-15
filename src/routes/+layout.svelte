@@ -310,6 +310,14 @@
 									Post Job
 								</a>
 							</li>
+							<li>
+								<a 
+									href="/profile/hiring-manager/jobs" 
+									aria-current={currentPath.includes('/profile/hiring-manager/jobs') ? 'page' : undefined}
+								>
+									Job Management
+								</a>
+							</li>
 						{:else if $userStore.profile?.account_type === 'job_seeker'}
 							<li>
 								<a 
