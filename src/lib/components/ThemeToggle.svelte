@@ -5,20 +5,56 @@
   function toggleTheme() {
     themeStore.toggleTheme();
   }
+  
+  // Handle keyboard events
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggleTheme();
+    }
+  }
 </script>
 
 <button 
   type="button" 
   class="theme-toggle" 
-  on:click={toggleTheme} 
+  on:click={toggleTheme}
+  on:keydown={handleKeydown}
+  role="switch"
+  aria-pressed={$themeStore === 'dark'}
   aria-label={$themeStore === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+  tabindex="0"
 >
+  <span class="visually-hidden">
+    {$themeStore === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+  </span>
+  
   {#if $themeStore === 'light'}
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="moon-icon">
+    <svg 
+      xmlns="http://www.w3.org/2000/svg" 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      stroke-width="2" 
+      stroke-linecap="round" 
+      stroke-linejoin="round" 
+      class="moon-icon"
+      aria-hidden="true"
+    >
       <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
     </svg>
   {:else}
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sun-icon">
+    <svg 
+      xmlns="http://www.w3.org/2000/svg" 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      stroke-width="2" 
+      stroke-linecap="round" 
+      stroke-linejoin="round" 
+      class="sun-icon"
+      aria-hidden="true"
+    >
       <circle cx="12" cy="12" r="5"></circle>
       <line x1="12" y1="1" x2="12" y2="3"></line>
       <line x1="12" y1="21" x2="12" y2="23"></line>
@@ -38,8 +74,8 @@
     border: none;
     cursor: pointer;
     padding: 4px;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -47,6 +83,7 @@
     color: var(--text-color);
     background-color: var(--surface-secondary-color);
     transition: background-color 0.3s, color 0.3s, transform 0.2s;
+    position: relative;
   }
   
   .theme-toggle:hover {
@@ -55,8 +92,8 @@
   }
   
   .theme-toggle:focus {
-    outline: 2px solid var(--primary-color);
-    outline-offset: 2px;
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
   }
   
   .moon-icon, .sun-icon {
@@ -72,5 +109,17 @@
   
   svg {
     animation: spin-in 0.4s ease-out;
+  }
+  
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
   }
 </style> 

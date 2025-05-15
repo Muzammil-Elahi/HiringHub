@@ -3,20 +3,20 @@
 /* LIGHT THEME (default) */
 :root {
   /* Color scheme */
-  --primary-color: #2563eb;
-  --primary-color-dark: #1e40af;
-  --primary-color-light: #e0f2fe;
-  --primary-color-rgb: 37, 99, 235;
+  --primary-color: #0d47a1;
+  --primary-color-dark: #002171;
+  --primary-color-light: #d0e4ff;
+  --primary-color-rgb: 13, 71, 161;
   --primary-contrast-color: white;
   
-  --secondary-color: #14b8a6;
-  --secondary-color-rgb: 20, 184, 166;
+  --secondary-color: #00796b;
+  --secondary-color-rgb: 0, 121, 107;
   
   /* Text colors */
   --text-color: #1a202c;
-  --text-muted-color: #6b7280;
-  --text-light-color: #a0aec0;
-  --text-placeholder-color: #a0aec0;
+  --text-muted-color: #555b66;
+  --text-light-color: #606770;
+  --text-placeholder-color: #606770;
   
   /* Background colors */
   --background-color: #f9fafb;
@@ -26,30 +26,30 @@
   --surface-hover-color: #e5e7eb;
   
   /* Border colors */
-  --border-color: #e5e7eb;
+  --border-color: #d1d5db;
   
   /* Status colors */
-  --success-color: #10b981;
-  --success-text-color: #166534;
+  --success-color: #00695c;
+  --success-text-color: #00513f;
   --success-bg-color: #dcfce7;
   --success-border-color: #86efac;
   
-  --error-text-color: #b91c1c;
+  --error-text-color: #9b0000;
   --error-bg-color: #fee2e2;
   --error-border-color: #fca5a5;
   
-  --warning-text-color: #c2410c;
+  --warning-text-color: #9f2700;
   --warning-bg-color: #ffedd5;
   --warning-border-color: #fdba74;
   
-  --info-text-color: #0369a1;
+  --info-text-color: #01579b;
   --info-bg-color: #e0f2fe;
   --info-border-color: #7dd3fc;
   
   /* Form, input colors */
   --input-bg-color: #ffffff;
-  --input-border-color: #e5e7eb;
-  --input-focus-color: #2563eb;
+  --input-border-color: #9ca3af;
+  --input-focus-color: #0d47a1;
   
   /* Spacing variables */
   --spacing-xs: 0.25rem;
@@ -76,25 +76,31 @@
   --transition-fast: 150ms;
   --transition-normal: 250ms;
   --transition-slow: 350ms;
+  
+  /* Accessibility-specific variables */
+  --focus-ring-color: #0d47a1;
+  --focus-ring-offset: 3px;
+  --focus-ring-width: 3px;
+  --min-target-size: 44px;
 }
 
 /* DARK THEME */
 [data-theme="dark"] {
   /* Color scheme */
-  --primary-color: #3b82f6;
-  --primary-color-dark: #60a5fa;
+  --primary-color: #64b5f6;
+  --primary-color-dark: #90caf9;
   --primary-color-light: #1e3a8a;
-  --primary-color-rgb: 59, 130, 246;
-  --primary-contrast-color: #f9fafb;
+  --primary-color-rgb: 100, 181, 246;
+  --primary-contrast-color: #000000;
   
-  --secondary-color: #2dd4bf;
-  --secondary-color-rgb: 45, 212, 191;
+  --secondary-color: #4db6ac;
+  --secondary-color-rgb: 77, 182, 172;
   
   /* Text colors */
   --text-color: #f9fafb;
-  --text-muted-color: #9ca3af;
-  --text-light-color: #6b7280;
-  --text-placeholder-color: #6b7280;
+  --text-muted-color: #d1d5db;
+  --text-light-color: #9ca3af;
+  --text-placeholder-color: #9ca3af;
   
   /* Background colors */
   --background-color: #111827;
@@ -104,10 +110,10 @@
   --surface-hover-color: #2d3748;
   
   /* Border colors */
-  --border-color: #374151;
+  --border-color: #4b5563;
   
   /* Status colors */
-  --success-color: #10b981;
+  --success-color: #4caf50;
   --success-text-color: #a7f3d0;
   --success-bg-color: #064e3b;
   --success-border-color: #10b981;
@@ -126,13 +132,18 @@
   
   /* Form, input colors */
   --input-bg-color: #1f2937;
-  --input-border-color: #374151;
-  --input-focus-color: #3b82f6;
+  --input-border-color: #6b7280;
+  --input-focus-color: #64b5f6;
   
   /* Shadows */
   --box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   --box-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
   --box-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.3);
+  
+  /* Accessibility-specific variables */
+  --focus-ring-color: #64b5f6;
+  --focus-ring-offset: 3px;
+  --focus-ring-width: 3px;
 }
 
 /* Global styles */
@@ -168,6 +179,11 @@ a:hover {
   text-decoration: underline;
 }
 
+a:focus {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
 p {
   margin-bottom: 1rem;
 }
@@ -184,6 +200,24 @@ p {
 button {
   cursor: pointer;
   font-family: inherit;
+  min-height: var(--min-target-size);
+  min-width: var(--min-target-size);
+}
+
+button:focus {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Input accessibility */
+input, select, textarea {
+  min-height: var(--min-target-size);
+  font-size: var(--font-size-base);
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Utilities */
@@ -203,6 +237,18 @@ button {
   margin-bottom: 1.25rem;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
 /* Grid system */
 .grid {
   display: grid;
@@ -216,6 +262,10 @@ button {
 @media (max-width: 768px) {
   .grid {
     grid-template-columns: 1fr !important;
+  }
+  
+  html, body {
+    font-size: 18px;
   }
 }
 
@@ -236,4 +286,17 @@ a {
 nav,
 footer {
   transition: background-color 0.3s, border-color 0.3s;
+}
+
+/* High contrast mode adjustments */
+@media (forced-colors: active) {
+  :root {
+    --primary-color: CanvasText;
+    --primary-color-dark: CanvasText;
+    --focus-ring-color: Highlight;
+  }
+  
+  a, button, input, select, textarea {
+    forced-color-adjust: none;
+  }
 }

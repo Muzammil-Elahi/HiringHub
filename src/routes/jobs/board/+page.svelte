@@ -32,6 +32,10 @@
   // Keep track of applied jobs
   let appliedJobs: Record<string, boolean> = {};
   let checkingApplications = false;
+  
+  // Track current focus for keyboard navigation
+  let focusedJobIndex = -1;
+  let jobCardsRef: HTMLDivElement;
 
   // Initialize filters from loaded jobs
   function initializeFilters() {
@@ -156,6 +160,20 @@
     if (sortByMatch) {
       sortJobsByMatch();
     }
+    
+    // Reset focused job index when filters change
+    focusedJobIndex = -1;
+    
+    // Announce results to screen readers
+    announceSearchResults();
+  }
+  
+  // Announce search results to screen readers
+  function announceSearchResults() {
+    const resultsAnnouncement = document.getElementById('search-results-announcement');
+    if (resultsAnnouncement) {
+      resultsAnnouncement.textContent = `Found ${filteredJobs.length} job${filteredJobs.length === 1 ? '' : 's'} matching your criteria.`;
+    }
   }
 
   // Handle filter changes
@@ -174,6 +192,12 @@
     minSalary = null;
     sortByMatch = false;
     filteredJobs = [...jobs];
+    
+    // Announce reset to screen readers
+    const resultsAnnouncement = document.getElementById('search-results-announcement');
+    if (resultsAnnouncement) {
+      resultsAnnouncement.textContent = 'Filters have been reset. Showing all jobs.';
+    }
   }
   
   // Toggle sort by match
@@ -182,596 +206,666 @@
     
     if (sortByMatch) {
       sortJobsByMatch();
+      
+      // Announce sort change to screen readers
+      const resultsAnnouncement = document.getElementById('search-results-announcement');
+      if (resultsAnnouncement) {
+        resultsAnnouncement.textContent = 'Jobs sorted by match percentage.';
+      }
     } else {
       // Reset to default sort (latest first)
       filteredJobs = [...filteredJobs].sort((a, b) => {
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
+      
+      // Announce sort change to screen readers
+      const resultsAnnouncement = document.getElementById('search-results-announcement');
+      if (resultsAnnouncement) {
+        resultsAnnouncement.textContent = 'Jobs sorted by most recent.';
+      }
     }
   }
 
   // Apply to job
   async function applyToJob(jobId: string) {
     if (!$userStore.loggedIn) {
-      goto('/login');
+      goto('/login?redirect=/jobs/board');
       return;
     }
     
     if ($userStore.profile?.account_type !== 'job_seeker') {
-      alert('Only job seekers can apply to jobs.');
+      error = 'Only job seekers can apply to jobs.';
       return;
     }
     
-    // Don't allow application if already applied
-    if (appliedJobs[jobId]) {
-      alert('You have already applied to this job.');
-      return;
-    }
+    // Redirect to the job detail page instead of apply page
+    goto(`/jobs/${jobId}`);
+  }
+  
+  // Handle keyboard navigation
+  function handleJobListKeyDown(event: KeyboardEvent) {
+    const jobElements = jobCardsRef?.querySelectorAll('.job-card');
+    if (!jobElements || jobElements.length === 0) return;
     
-    try {
-      loading = true;
-      
-      console.log('Current user profile:', $userStore.profile);
-      
-      if (!$userStore.profile?.resume_url) {
-        alert('Please upload a resume on your profile before applying.');
-        goto('/profile/job-seeker'); // Redirect to profile to upload resume
-        return;
-      }
-      
-      // Check if user has already applied
-      const { data: existingApplication, error: checkError } = await supabase
-        .from('applications')
-        .select('*')
-        .eq('job_id', jobId)
-        .eq('job_seeker_id', $userStore.user?.id)
-        .maybeSingle();
-      
-      if (checkError) throw checkError;
-      
-      if (existingApplication) {
-        alert('You have already applied to this job.');
-        // Update our local cache of applied jobs
-        appliedJobs[jobId] = true;
-        return;
-      }
-      
-      // Create application with 1-click apply
-      const resumeUrl = $userStore.profile.resume_url || '';
-      console.log('Using resume URL for application:', resumeUrl);
-      
-      const applicationData = {
-        job_id: jobId,
-        job_seeker_id: $userStore.user?.id,
-        application_date: new Date().toISOString(),
-        status: 'Submitted',
-        cover_letter: '',
-        resume_snapshot_url: resumeUrl
-      };
-      
-      console.log('Submitting application with data:', applicationData);
-      
-      const { data: applicationResult, error: applyError } = await supabase
-        .from('applications')
-        .insert(applicationData)
-        .select();
-      
-      if (applyError) throw applyError;
-      
-      console.log('Application submitted successfully:', applicationResult);
-      
-      // Update our local cache of applied jobs
-      appliedJobs[jobId] = true;
-      
-      alert('Application submitted successfully!');
-      
-    } catch (err: any) {
-      console.error('Error applying to job:', err);
-      alert(`Failed to apply: ${err.message}`);
-    } finally {
-      loading = false;
+    // Handle arrow key navigation
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      focusedJobIndex = Math.min(focusedJobIndex + 1, jobElements.length - 1);
+      (jobElements[focusedJobIndex] as HTMLElement).focus();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      focusedJobIndex = Math.max(focusedJobIndex - 1, 0);
+      (jobElements[focusedJobIndex] as HTMLElement).focus();
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      focusedJobIndex = 0;
+      (jobElements[focusedJobIndex] as HTMLElement).focus();
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      focusedJobIndex = jobElements.length - 1;
+      (jobElements[focusedJobIndex] as HTMLElement).focus();
     }
   }
-
-  // Format currency
-  function formatSalary(min: number | null, max: number | null, currency: string) {
+  
+  // Format salary range for display
+  function formatSalary(min: number | null, max: number | null): string {
     if (!min && !max) return 'Salary not specified';
     
+    const formatNumber = (num: number) => {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: 0
+      }).format(num);
+    };
+    
     if (min && max) {
-      return `${currency} ${min.toLocaleString()} - ${max.toLocaleString()}`;
+      return `${formatNumber(min)} - ${formatNumber(max)}`;
     } else if (min) {
-      return `${currency} ${min.toLocaleString()}+`;
+      return `From ${formatNumber(min)}`;
     } else if (max) {
-      return `Up to ${currency} ${max.toLocaleString()}`;
+      return `Up to ${formatNumber(max)}`;
     }
-  }
-
-  // Format date
-  function formatDate(dateString: string) {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  }
-
-  function getTimeAgo(dateString: string) {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     
-    if (diffInSeconds < 60) return `${diffInSeconds} seconds ago`;
-    
-    const diffInMinutes = Math.floor(diffInSeconds / 60);
-    if (diffInMinutes < 60) return `${diffInMinutes} ${diffInMinutes === 1 ? 'minute' : 'minutes'} ago`;
-    
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) return `${diffInHours} ${diffInHours === 1 ? 'hour' : 'hours'} ago`;
-    
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) return `${diffInDays} ${diffInDays === 1 ? 'day' : 'days'} ago`;
-    
-    return formatDate(dateString);
+    return 'Salary not specified';
   }
 
   onMount(() => {
+    // Initialize filters on mount
     initializeFilters();
-    loadResumeAndCalculateMatches();
+    
+    // Check user applications
     checkUserApplications();
+    
+    // Load resume and calculate matches if user is logged in
+    if ($userStore.loggedIn && $userStore.profile?.account_type === 'job_seeker') {
+      loadResumeAndCalculateMatches();
+    }
   });
 </script>
 
-<div class="container job-board-page">
-  <h2>Find Your Next Career Opportunity</h2>
+<svelte:head>
+  <title>Job Board - HiringHub</title>
+  <meta name="description" content="Browse and search for job opportunities on HiringHub">
+</svelte:head>
+
+<div class="job-board-container" role="main" aria-labelledby="job-board-title">
+  <h1 id="job-board-title">Job Board</h1>
   
-  <!-- Search and Filter Section -->
-  <div class="search-filters">
-    <!-- Search bar -->
-    <div class="search-bar">
-      <input 
-        type="text" 
-        placeholder="Search job title, skills, or company..." 
-        bind:value={searchQuery}
-        on:input={handleSearch}
-      />
-      <button class="search-btn" on:click={handleSearch}>Search</button>
-    </div>
-    
-    <!-- Filters -->
-    <div class="filters">
-      <!-- Job Type Filter -->
-      <div class="filter-group">
-        <label for="job-type-filter">Job Type</label>
-        <select id="job-type-filter" bind:value={selectedJobType} on:change={handleFilterChange}>
-          <option value="">All Types</option>
-          {#each jobTypes as jobType}
-            <option value={jobType}>{jobType}</option>
-          {/each}
-        </select>
-      </div>
+  <!-- Screen reader announcements -->
+  <div id="search-results-announcement" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  
+  <div class="job-board-content">
+    <!-- Filters section -->
+    <section class="filters-section" aria-labelledby="filters-heading">
+      <h2 id="filters-heading">Search and Filter</h2>
       
-      <!-- Location Filter -->
-      <div class="filter-group">
-        <label for="location-filter">Location</label>
-        <select id="location-filter" bind:value={selectedLocation} on:change={handleFilterChange}>
-          <option value="">All Locations</option>
-          {#each locations as location}
-            <option value={location}>{location}</option>
-          {/each}
-        </select>
-      </div>
-      
-      <!-- Minimum Salary Filter -->
-      <div class="filter-group">
-        <label for="salary-filter">Minimum Salary</label>
+      <div class="search-bar">
+        <label for="search-input" class="sr-only">Search jobs</label>
         <input 
-          id="salary-filter" 
-          type="number" 
-          placeholder="e.g., 50000" 
-          bind:value={minSalary} 
-          on:input={handleFilterChange}
+          id="search-input" 
+          type="search" 
+          bind:value={searchQuery} 
+          placeholder="Search jobs by title, company, or keywords"
+          aria-label="Search jobs by title, company, or keywords"
         />
+        <button 
+          class="search-button" 
+          on:click={handleSearch}
+          aria-label="Search jobs"
+        >
+          <span aria-hidden="true">🔍</span>
+        </button>
       </div>
       
-      <!-- Match Sorting - Only show when user has a resume and is a job seeker -->
-      {#if $userStore.loggedIn && $userStore.profile?.account_type === 'job_seeker' && $userStore.profile?.resume_url}
-        <div class="filter-group">
-          <label for="match-filter">Job Match</label>
-          <div class="sort-match-container">
-            <input 
-              id="match-filter" 
-              type="checkbox" 
-              bind:checked={sortByMatch} 
-              on:change={toggleSortByMatch}
-            />
-            <label for="match-filter" class="inline-label">Sort by best match</label>
-          </div>
-          {#if resumeLoading}
-            <small>Calculating matches...</small>
-          {/if}
-        </div>
-      {/if}
-      
-      <!-- Reset filters button -->
-      <button class="reset-btn" on:click={resetFilters}>Reset Filters</button>
-    </div>
-    
-    <!-- Show message if resume match is not available but user is a job seeker -->
-    {#if $userStore.loggedIn && $userStore.profile?.account_type === 'job_seeker' && resumeLoadError}
-      <div class="resume-match-message">
-        <p>{resumeLoadError}</p>
-        <a href="/profile/job-seeker" class="resume-link">Upload Resume</a>
-      </div>
-    {/if}
-  </div>
-  
-  <!-- Results section -->
-  {#if loading}
-    <div class="loading-state">
-      <p>Loading job listings...</p>
-    </div>
-  {:else if error}
-    <div class="error-state">
-      <p class="message error">{error}</p>
-    </div>
-  {:else if filteredJobs.length === 0}
-    <div class="empty-state">
-      <h3>No job listings found</h3>
-      {#if jobs.length > 0}
-        <p>Try adjusting your search criteria or removing some filters.</p>
-      {:else}
-        <p>There are currently no active job listings available. Please check back later.</p>
-      {/if}
-    </div>
-  {:else}
-    <div class="results-info">
-      <p>Showing {filteredJobs.length} {filteredJobs.length === 1 ? 'job' : 'jobs'}</p>
-    </div>
-    
-    <div class="job-listings">
-      {#each filteredJobs as job}
-        <div class="job-card">
-          <div class="job-header">
-            <h3 class="job-title">{job.title}</h3>
-            <span class="job-timeago">{getTimeAgo(job.created_at)}</span>
-          </div>
-          
-          <div class="job-company">
-            <p class="company-name">{job.company_name}</p>
-            <p class="job-location"><i class="location-icon">📍</i> {job.location}</p>
-          </div>
-          
-          <div class="job-details">
-            <span class="job-type">{job.job_type}</span>
-            {#if job.salary_min || job.salary_max}
-              <span class="job-salary">{formatSalary(job.salary_min, job.salary_max, job.salary_currency)}</span>
-            {/if}
-            
-            <!-- Match percentage badge - only show if match is calculated -->
-            {#if $userStore.loggedIn && $userStore.profile?.account_type === 'job_seeker' && matchPercentages[job.id] !== undefined}
-              <span class="match-percentage" class:high-match={matchPercentages[job.id] >= 70} class:medium-match={matchPercentages[job.id] >= 40 && matchPercentages[job.id] < 70} class:low-match={matchPercentages[job.id] < 40}>
-                {matchPercentages[job.id]}% Match
-              </span>
-            {/if}
-          </div>
-          
-          {#if job.job_skills && job.job_skills.length > 0}
-            <div class="job-skills">
-              {#each job.job_skills as skill}
-                <span class="skill-tag">{skill.skill_name}</span>
+      <div class="filter-options">
+        <div class="filter-row">
+          <div class="filter-group">
+            <label for="job-type-filter">Job Type</label>
+            <select
+              id="job-type-filter"
+              bind:value={selectedJobType}
+              on:change={handleFilterChange}
+              aria-label="Filter by job type"
+            >
+              <option value="">All Types</option>
+              {#each jobTypes as jobType}
+                <option value={jobType}>{jobType}</option>
               {/each}
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label for="location-filter">Location</label>
+            <select
+              id="location-filter"
+              bind:value={selectedLocation}
+              on:change={handleFilterChange}
+              aria-label="Filter by location"
+            >
+              <option value="">All Locations</option>
+              {#each locations as location}
+                <option value={location}>{location}</option>
+              {/each}
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label for="salary-filter">Minimum Salary</label>
+            <select
+              id="salary-filter"
+              bind:value={minSalary}
+              on:change={handleFilterChange}
+              aria-label="Filter by minimum salary"
+            >
+              <option value={null}>Any Salary</option>
+              <option value={30000}>$30,000+</option>
+              <option value={50000}>$50,000+</option>
+              <option value={75000}>$75,000+</option>
+              <option value={100000}>$100,000+</option>
+              <option value={150000}>$150,000+</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="filter-actions">
+          <button 
+            class="reset-button" 
+            on:click={resetFilters}
+            aria-label="Reset all filters"
+          >
+            Reset Filters
+          </button>
+          
+          {#if $userStore.loggedIn && $userStore.profile?.account_type === 'job_seeker'}
+            <div class="match-toggle">
+              <input 
+                type="checkbox" 
+                id="match-toggle" 
+                bind:checked={sortByMatch} 
+                on:change={toggleSortByMatch}
+                aria-label="Sort by resume match percentage"
+              />
+              <label for="match-toggle">
+                Sort by Match
+                {#if resumeLoading}
+                  <span class="loading-indicator" aria-hidden="true">⟳</span>
+                  <span class="sr-only">Loading resume data</span>
+                {/if}
+              </label>
             </div>
           {/if}
-          
-          <div class="job-description">
-            <p>{job.description.length > 200 ? `${job.description.slice(0, 200)}...` : job.description}</p>
-          </div>
-          
-          <div class="job-actions">
-            <button class="view-btn" on:click={() => goto(`/jobs/${job.id}`)}>
-              View Details
-            </button>
-            <button class="apply-btn" on:click={() => applyToJob(job.id)} disabled={loading || appliedJobs[job.id] || checkingApplications}>
-              {loading ? 'Submitting...' : 
-              checkingApplications ? 'Checking...' :
-              appliedJobs[job.id] ? 'Already Applied' : '1-Click Apply'}
-            </button>
-          </div>
         </div>
-      {/each}
-    </div>
-  {/if}
+      </div>
+      
+      {#if resumeLoadError}
+        <div class="resume-error" role="alert">
+          <p>{resumeLoadError}</p>
+        </div>
+      {/if}
+    </section>
+    
+    <!-- Jobs listing section -->
+    <section class="jobs-section" aria-labelledby="jobs-listing-heading">
+      <h2 id="jobs-listing-heading" class="sr-only">Jobs Listing</h2>
+      
+      {#if loading}
+        <div class="loading-state" aria-live="polite" role="status">
+          <p>Loading jobs...</p>
+        </div>
+      {:else if error}
+        <div class="error-state" role="alert">
+          <p>{error}</p>
+        </div>
+      {:else if filteredJobs.length === 0}
+        <div class="empty-state" aria-live="polite">
+          <h3>No jobs found</h3>
+          <p>Try adjusting your search criteria or check back later for new opportunities.</p>
+        </div>
+      {:else}
+        <div 
+          class="job-cards" 
+          bind:this={jobCardsRef} 
+          on:keydown={handleJobListKeyDown}
+          role="list"
+          aria-label="List of jobs"
+        >
+          {#each filteredJobs as job, index (job.id)}
+            <div 
+              class="job-card" 
+              role="listitem"
+              tabindex="0"
+              on:click={() => goto(`/jobs/${job.id}`)}
+              on:keydown={(e) => e.key === 'Enter' && goto(`/jobs/${job.id}`)}
+            >
+              <div class="job-header">
+                <h3 class="job-title">{job.title}</h3>
+                {#if sortByMatch && matchPercentages[job.id] !== undefined}
+                  <div 
+                    class="match-percentage" 
+                    aria-label="Match percentage: {matchPercentages[job.id]}%"
+                  >
+                    <span class="match-label">Match</span>
+                    <span class="match-value">{matchPercentages[job.id]}%</span>
+                  </div>
+                {/if}
+              </div>
+              
+              <div class="job-company">
+                <span class="company-name">{job.company_name}</span>
+              </div>
+              
+              <div class="job-details">
+                {#if job.location}
+                  <div class="job-location" aria-label="Location: {job.location}">
+                    <span aria-hidden="true">📍</span> {job.location}
+                  </div>
+                {/if}
+                
+                {#if job.job_type}
+                  <div class="job-type" aria-label="Job type: {job.job_type}">
+                    <span aria-hidden="true">🕒</span> {job.job_type}
+                  </div>
+                {/if}
+                
+                <div class="job-salary" aria-label="Salary: {formatSalary(job.salary_min, job.salary_max)}">
+                  <span aria-hidden="true">💰</span> {formatSalary(job.salary_min, job.salary_max)}
+                </div>
+              </div>
+              
+              <div class="job-description">
+                <p>{job.description?.substring(0, 150)}...</p>
+              </div>
+              
+              <div class="job-footer">
+                <div class="job-date" aria-label="Posted {new Date(job.created_at).toLocaleDateString()}">
+                  Posted: {new Date(job.created_at).toLocaleDateString()}
+                </div>
+                
+                {#if appliedJobs[job.id]}
+                  <div class="applied-status" aria-label="You have applied to this job">
+                    <span aria-hidden="true">✓</span> Applied
+                  </div>
+                {:else}
+                  <button 
+                    class="apply-button" 
+                    on:click|stopPropagation={(e) => {
+                      e.preventDefault();
+                      applyToJob(job.id);
+                    }}
+                    aria-label="Apply to {job.title} at {job.company_name}"
+                  >
+                    Apply Now
+                  </button>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+  </div>
 </div>
 
 <style>
-  .job-board-page {
-    max-width: 1000px;
+  /* Screen reader only class */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .job-board-container {
+    max-width: 1200px;
     margin: 0 auto;
+    padding: var(--spacing-lg);
   }
   
-  h2 {
+  h1 {
     margin-bottom: var(--spacing-lg);
-    text-align: center;
+    color: var(--heading-color);
   }
   
-  /* Search and Filter Styles */
-  .search-filters {
-    margin-bottom: var(--spacing-xl);
-    padding: var(--spacing-md);
+  .job-board-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+  }
+  
+  /* Filters section */
+  .filters-section {
     background-color: var(--surface-color);
-    border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    padding: var(--spacing-lg);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  }
+  
+  .filters-section h2 {
+    margin-top: 0;
+    margin-bottom: var(--spacing-md);
+    font-size: 1.25rem;
+    color: var(--heading-color);
   }
   
   .search-bar {
     display: flex;
     margin-bottom: var(--spacing-md);
-    gap: var(--spacing-sm);
   }
   
   .search-bar input {
     flex: 1;
-    padding: var(--spacing-sm) var(--spacing-md);
+    padding: 0.75rem;
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    font-size: var(--font-size-base);
+    border-radius: var(--border-radius) 0 0 var(--border-radius);
+    font-size: 1rem;
   }
   
-  .search-btn {
-    padding: var(--spacing-sm) var(--spacing-lg);
+  .search-bar input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--focus-ring-color);
+  }
+  
+  .search-button {
+    padding: 0.75rem 1rem;
     background-color: var(--primary-color);
-    color: var(--primary-contrast-color);
+    color: white;
     border: none;
-    border-radius: var(--border-radius);
+    border-radius: 0 var(--border-radius) var(--border-radius) 0;
     cursor: pointer;
-    font-weight: 500;
+    transition: background-color 0.2s;
   }
   
-  .search-btn:hover {
+  .search-button:hover, .search-button:focus {
     background-color: var(--primary-color-dark);
   }
   
-  .filters {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  .search-button:focus {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+  
+  .filter-options {
+    display: flex;
+    flex-direction: column;
     gap: var(--spacing-md);
-    align-items: end;
+  }
+  
+  .filter-row {
+    display: flex;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
   }
   
   .filter-group {
-    display: flex;
-    flex-direction: column;
+    flex: 1;
+    min-width: 200px;
   }
   
   .filter-group label {
+    display: block;
     margin-bottom: var(--spacing-xs);
-    font-size: 0.875rem;
     font-weight: 500;
-    color: var(--text-muted-color);
   }
   
-  .inline-label {
-    display: inline-flex;
-    margin-left: var(--spacing-xs);
-    font-weight: normal;
-  }
-  
-  .sort-match-container {
-    display: flex;
-    align-items: center;
-  }
-  
-  .filter-group select,
-  .filter-group input {
-    padding: var(--spacing-sm);
+  .filter-group select {
+    width: 100%;
+    padding: 0.75rem;
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
-    font-size: var(--font-size-base);
     background-color: var(--surface-color);
+    font-size: 1rem;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23333'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1.25rem;
   }
   
-  .filter-group input[type="checkbox"] {
-    width: auto;
-    margin: 0;
+  .filter-group select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--focus-ring-color);
   }
   
-  .filter-group small {
-    margin-top: var(--spacing-xs);
-    font-size: 0.75rem;
-    color: var(--text-muted-color);
-  }
-  
-  .resume-match-message {
-    margin-top: var(--spacing-md);
-    padding: var(--spacing-sm);
-    background-color: var(--surface-secondary-color, #f3f4f6);
-    border-radius: var(--border-radius);
-    font-size: 0.875rem;
+  .filter-actions {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+    margin-top: var(--spacing-xs);
   }
   
-  .resume-match-message p {
-    margin: 0;
-    color: var(--text-muted-color);
-  }
-  
-  .resume-link {
-    color: var(--primary-color);
-    text-decoration: none;
-    font-weight: 500;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border: 1px solid var(--primary-color);
-    border-radius: var(--border-radius);
-  }
-  
-  .resume-link:hover {
-    background-color: var(--primary-color-light, #e0f2fe);
-  }
-  
-  .reset-btn {
-    padding: var(--spacing-sm);
-    background-color: var(--background-color);
+  .reset-button {
+    padding: 0.5rem 1rem;
+    background-color: var(--surface-color);
     color: var(--text-color);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     cursor: pointer;
-    font-size: 0.875rem;
+    transition: background-color 0.2s;
   }
   
-  .reset-btn:hover {
-    background-color: var(--background-hover-color, #f9fafb);
+  .reset-button:hover, .reset-button:focus {
+    background-color: var(--hover-color);
   }
   
-  /* Results Styles */
-  .results-info {
-    margin-bottom: var(--spacing-md);
-    color: var(--text-muted-color);
-    font-size: 0.875rem;
+  .reset-button:focus {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
   }
   
-  .job-listings {
+  .match-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .match-toggle input[type="checkbox"] {
+    appearance: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.25rem;
+    margin: 0;
+    padding: 0;
+    background-color: var(--surface-color);
+    position: relative;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+  }
+  
+  .match-toggle input[type="checkbox"]:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+  }
+  
+  .match-toggle input[type="checkbox"]:checked::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 0.8rem;
+  }
+  
+  .match-toggle input[type="checkbox"]:focus {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+  
+  .match-toggle label {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .loading-indicator {
+    animation: spin 1s linear infinite;
+    display: inline-block;
+    font-size: 1rem;
+  }
+  
+  .resume-error {
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius);
+    background-color: var(--error-bg-color, #fee2e2);
+    color: var(--error-text-color, #b91c1c);
+    border-left: 4px solid var(--error-text-color, #b91c1c);
+  }
+  
+  .resume-error p {
+    margin: 0;
+  }
+  
+  /* Jobs section */
+  .jobs-section {
+    flex: 1;
+  }
+  
+  .loading-state, .error-state, .empty-state {
+    padding: var(--spacing-lg);
+    border-radius: var(--border-radius);
+    background-color: var(--surface-color);
+    border: 1px solid var(--border-color);
+    text-align: center;
+  }
+  
+  .error-state {
+    background-color: var(--error-bg-color, #fee2e2);
+    border-color: var(--error-text-color, #b91c1c);
+  }
+  
+  .empty-state h3 {
+    margin-top: 0;
+  }
+  
+  .job-cards {
     display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
     gap: var(--spacing-lg);
   }
   
   .job-card {
-    padding: var(--spacing-lg);
     background-color: var(--surface-color);
-    border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
-    transition: box-shadow 0.2s, transform 0.2s;
+    border: 1px solid var(--border-color);
+    padding: var(--spacing-lg);
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    position: relative;
+    overflow: hidden;
   }
   
-  .job-card:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-    transform: translateY(-2px);
+  .job-card:hover, .job-card:focus {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+  }
+  
+  .job-card:focus {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
   }
   
   .job-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
   }
   
   .job-title {
     margin: 0;
     font-size: 1.25rem;
-    line-height: 1.3;
-    color: var(--primary-color);
+    color: var(--heading-color);
+    font-weight: 600;
   }
   
-  .job-timeago {
+  .match-percentage {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--border-radius);
+    font-size: 0.875rem;
+    font-weight: 500;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 3.5rem;
+  }
+  
+  .match-label {
     font-size: 0.75rem;
-    color: var(--text-light-color);
-    white-space: nowrap;
-    margin-left: var(--spacing-sm);
+    opacity: 0.8;
+  }
+  
+  .match-value {
+    font-weight: 700;
   }
   
   .job-company {
-    margin-bottom: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
   }
   
   .company-name {
     font-weight: 500;
-    margin: 0 0 var(--spacing-xs) 0;
-  }
-  
-  .job-location {
-    display: flex;
-    align-items: center;
-    color: var(--text-muted-color);
-    font-size: 0.875rem;
-    margin: 0;
-  }
-  
-  .location-icon {
-    margin-right: var(--spacing-xs);
-    font-style: normal;
+    color: var(--primary-color);
+    font-size: 1.1rem;
   }
   
   .job-details {
     display: flex;
     flex-wrap: wrap;
     gap: var(--spacing-md);
-    margin: var(--spacing-sm) 0;
+    margin-bottom: var(--spacing-md);
+    color: var(--text-color-secondary);
+    font-size: 0.95rem;
   }
   
-  .job-type {
-    display: inline-block;
-    background-color: var(--primary-color-light, #e0f2fe);
-    color: var(--primary-color-dark, #1e40af);
-    font-size: 0.75rem;
-    font-weight: 500;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: 9999px;
-  }
-  
-  .job-salary {
-    display: inline-block;
-    background-color: var(--success-bg-color, #dcfce7);
-    color: var(--success-text-color, #166534);
-    font-size: 0.75rem;
-    font-weight: 500;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: 9999px;
-  }
-  
-  /* Match percentage badge */
-  .match-percentage {
-    display: inline-flex;
-    align-items: center;
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: 9999px;
-    background-color: #e5e7eb; /* Default background */
-    color: #4b5563; /* Default text color */
-  }
-  
-  .match-percentage.high-match {
-    background-color: #10b981; /* Green */
-    color: white;
-  }
-  
-  .match-percentage.medium-match {
-    background-color: #f59e0b; /* Amber */
-    color: white;
-  }
-  
-  .match-percentage.low-match {
-    background-color: #ef4444; /* Red */
-    color: white;
-  }
-  
-  .match-percentage::before {
-    content: "📊";
-    margin-right: 0.25rem;
-  }
-  
-  .job-skills {
+  .job-location, .job-type, .job-salary {
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-xs);
-    margin: var(--spacing-sm) 0;
-  }
-  
-  .skill-tag {
-    display: inline-block;
-    background-color: var(--surface-secondary-color, #f3f4f6);
-    color: var(--text-color);
-    font-size: 0.75rem;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--border-radius);
+    align-items: center;
+    gap: 0.25rem;
   }
   
   .job-description {
-    margin: var(--spacing-md) 0;
-    color: var(--text-muted-color);
-    font-size: 0.875rem;
+    flex: 1;
+    margin-bottom: var(--spacing-md);
+    color: var(--text-color);
     line-height: 1.5;
   }
   
@@ -779,111 +873,86 @@
     margin: 0;
   }
   
-  .job-actions {
+  .job-footer {
     display: flex;
-    gap: var(--spacing-md);
-    margin-top: var(--spacing-md);
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--border-color);
+    padding-top: var(--spacing-md);
   }
   
-  .view-btn,
-  .apply-btn {
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-radius: var(--border-radius);
-    cursor: pointer;
-    font-weight: 500;
+  .job-date {
     font-size: 0.875rem;
+    color: var(--text-color-secondary);
   }
   
-  .view-btn {
-    background-color: var(--background-color);
-    color: var(--primary-color);
-    border: 1px solid var(--primary-color);
-  }
-  
-  .view-btn:hover {
-    background-color: var(--primary-color-light, #e0f2fe);
-  }
-  
-  .apply-btn {
+  .apply-button {
     background-color: var(--primary-color);
-    color: var(--primary-contrast-color);
+    color: white;
     border: none;
-    position: relative;
+    border-radius: var(--border-radius);
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
   }
   
-  .apply-btn:hover {
+  .apply-button:hover, .apply-button:focus {
     background-color: var(--primary-color-dark);
   }
   
-  .apply-btn:hover::after {
-    content: "Uses resume from your profile";
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: var(--text-color);
-    color: white;
-    padding: var(--spacing-xs) var(--spacing-sm);
+  .apply-button:focus {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+  
+  .applied-status {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--success-text-color, #166534);
+    font-weight: 500;
+    background-color: var(--success-bg-color, #dcfce7);
+    padding: 0.5rem 1rem;
     border-radius: var(--border-radius);
-    font-size: 0.75rem;
-    white-space: nowrap;
-    z-index: 10;
-    margin-bottom: var(--spacing-xs);
   }
   
-  .apply-btn:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-    background-color: var(--text-muted-color, #6b7280);
+  /* Animations */
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
   
-  /* Loading, Error, and Empty States */
-  .loading-state,
-  .error-state,
-  .empty-state {
-    text-align: center;
-    padding: var(--spacing-xl);
-    background-color: var(--surface-secondary-color, #f3f4f6);
-    border-radius: var(--border-radius);
-    margin-top: var(--spacing-lg);
-  }
-  
-  .empty-state h3 {
-    margin-top: 0;
-    color: var(--text-color);
-  }
-  
-  .empty-state p {
-    color: var(--text-muted-color);
-  }
-  
-  .message.error {
-    color: var(--error-text-color, #b91c1c);
-  }
-  
-  /* Responsive Styles */
+  /* Responsive styles */
   @media (max-width: 768px) {
-    .filters {
+    .filter-row {
+      flex-direction: column;
+      gap: var(--spacing-md);
+    }
+    
+    .job-cards {
       grid-template-columns: 1fr;
     }
     
-    .job-header {
+    .job-footer {
       flex-direction: column;
+      gap: var(--spacing-md);
+      align-items: flex-start;
     }
     
-    .job-timeago {
-      margin-left: 0;
-      margin-top: var(--spacing-xs);
+    .apply-button {
+      width: 100%;
+    }
+  }
+  
+  /* Reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    .job-card {
+      transition: none;
     }
     
-    .job-actions {
-      flex-direction: column;
-    }
-    
-    .resume-match-message {
-      flex-direction: column;
-      gap: var(--spacing-sm);
-      text-align: center;
+    .loading-indicator {
+      animation: none;
     }
   }
 </style> 

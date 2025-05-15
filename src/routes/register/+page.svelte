@@ -107,7 +107,11 @@
       
       if (!result.success) {
         // Format error messages in a user-friendly way
-        const errorMessage = result.error.message || 'Registration failed';
+        const errorMessage = result.error ? (
+          typeof result.error === 'object' && 'message' in result.error 
+            ? String(result.error.message) 
+            : 'Registration failed'
+        ) : 'Registration failed';
         
         if (errorMessage.toLowerCase().includes('email')) {
           emailError = errorMessage;
@@ -125,7 +129,7 @@
         throw new Error(errorMessage);
       }
       
-      const userId = result.data.user?.id;
+      const userId = result.data?.user?.id;
       if (!userId) {
         throw new Error('Failed to get user ID after registration');
       }
@@ -157,100 +161,128 @@
   }
 </script>
 
+<svelte:head>
+  <title>Register - HiringHub</title>
+  <meta name="description" content="Create your HiringHub account to connect with opportunities or find top talent.">
+</svelte:head>
+
 <div class="container auth-page">
-  <div class="auth-card">
-    <h2>Register for HiringHub</h2>
+  <div class="auth-card" role="region" aria-label="Registration form">
+    <h1>Register for HiringHub</h1>
     
     {#if error}
-      <div class="error-message">
-        <p><span class="error-icon">⚠️</span> {error}</p>
+      <div class="error-message" role="alert" aria-live="assertive">
+        <p><span class="error-icon" aria-hidden="true">⚠️</span> {error}</p>
       </div>
     {/if}
     
-    <form on:submit|preventDefault={handleRegister}>
+    <form on:submit|preventDefault={handleRegister} novalidate>
       <div class="form-group {emailError ? 'has-error' : ''}">
-        <label for="email">Email</label>
+        <label for="email" id="email-label">Email</label>
         <input 
           id="email" 
           type="email" 
           bind:value={email} 
           on:focus={() => handleFocus('email')}
+          on:blur={validateEmail}
           placeholder="your@email.com" 
           class:error-input={emailError}
           disabled={loading}
+          aria-required="true"
+          aria-invalid={!!emailError}
+          aria-describedby={emailError ? 'email-error' : undefined}
           required
         />
         {#if emailError}
-          <div class="field-error">
+          <div class="field-error" id="email-error" role="alert">
             <p>{emailError}</p>
           </div>
         {/if}
       </div>
       
       <div class="form-group {passwordError ? 'has-error' : ''}">
-        <label for="password">Password</label>
+        <label for="password" id="password-label">Password</label>
         <input 
           id="password" 
           type="password" 
           bind:value={password} 
           on:focus={() => handleFocus('password')}
+          on:blur={validatePassword}
           placeholder="Minimum 6 characters" 
           class:error-input={passwordError}
           disabled={loading}
+          aria-required="true"
+          aria-invalid={!!passwordError}
+          aria-describedby={passwordError ? 'password-error' : 'password-hint'}
           required
         />
+        <div id="password-hint" class="field-hint">Password must be at least 6 characters long</div>
         {#if passwordError}
-          <div class="field-error">
+          <div class="field-error" id="password-error" role="alert">
             <p>{passwordError}</p>
           </div>
         {/if}
       </div>
       
       <div class="form-group {confirmPasswordError ? 'has-error' : ''}">
-        <label for="confirmPassword">Confirm Password</label>
+        <label for="confirmPassword" id="confirm-password-label">Confirm Password</label>
         <input 
           id="confirmPassword" 
           type="password" 
           bind:value={confirmPassword} 
           on:focus={() => handleFocus('confirmPassword')}
+          on:blur={validateConfirmPassword}
           placeholder="Enter password again"
           class:error-input={confirmPasswordError}
           disabled={loading}
+          aria-required="true"
+          aria-invalid={!!confirmPasswordError}
+          aria-describedby={confirmPasswordError ? 'confirm-password-error' : undefined}
           required
         />
         {#if confirmPasswordError}
-          <div class="field-error">
+          <div class="field-error" id="confirm-password-error" role="alert">
             <p>{confirmPasswordError}</p>
           </div>
         {/if}
       </div>
       
-      <div class="form-group">
-        <label>Account Type</label>
-        <div class="radio-group">
+      <fieldset class="account-type-fieldset">
+        <legend>Account Type</legend>
+        <div class="radio-group" role="radiogroup" aria-required="true">
           <label class="radio-label">
             <input 
               type="radio" 
+              id="job-seeker"
+              name="accountType"
               bind:group={accountType} 
               value="job_seeker" 
               disabled={loading}
+              checked
             />
-            Job Seeker
+            <span>Job Seeker</span>
           </label>
           <label class="radio-label">
             <input 
               type="radio" 
+              id="hiring-manager"
+              name="accountType"
               bind:group={accountType} 
               value="hiring_manager" 
               disabled={loading}
             />
-            Hiring Manager
+            <span>Hiring Manager</span>
           </label>
         </div>
-      </div>
+      </fieldset>
       
       <div class="form-actions">
-        <button type="submit" class="btn-primary" disabled={loading}>
+        <button 
+          type="submit" 
+          class="btn-primary" 
+          disabled={loading}
+          aria-busy={loading}
+        >
           {loading ? 'Registering...' : 'Create Account'}
         </button>
       </div>
@@ -276,10 +308,11 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   }
   
-  h2 {
+  h1 {
     text-align: center;
     margin-bottom: var(--spacing-lg);
     color: var(--primary-color);
+    font-size: 1.75rem;
   }
   
   .form-group {
@@ -306,21 +339,23 @@
     border-radius: var(--border-radius);
     font-size: var(--font-size-base);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    min-height: var(--min-target-size);
   }
   
   .form-group input:focus {
-    outline: none;
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.2);
+    box-shadow: none;
   }
   
   .form-group input.error-input {
     border-color: var(--error-text-color);
-    background-color: rgba(var(--error-bg-color), 0.05);
+    background-color: #fff8f8;
   }
   
   .form-group input.error-input:focus {
-    box-shadow: 0 0 0 2px rgba(var(--error-text-color), 0.2);
+    outline-color: var(--error-text-color);
   }
   
   .field-error {
@@ -334,6 +369,27 @@
     margin: 0;
   }
   
+  .field-hint {
+    color: var(--text-muted-color);
+    font-size: 0.85rem;
+    margin-top: 0.25rem;
+  }
+  
+  .account-type-fieldset {
+    border: none;
+    padding: 0;
+    margin: 0 0 var(--spacing-md) 0;
+  }
+  
+  .account-type-fieldset legend {
+    display: block;
+    margin-bottom: var(--spacing-xs);
+    font-weight: 500;
+    transition: color 0.2s ease;
+    float: none;
+    width: 100%;
+  }
+  
   .radio-group {
     display: flex;
     gap: var(--spacing-lg);
@@ -345,6 +401,18 @@
     align-items: center;
     gap: var(--spacing-xs);
     cursor: pointer;
+    padding: var(--spacing-xs) 0;
+  }
+  
+  .radio-label input[type="radio"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+  }
+  
+  .radio-label input[type="radio"]:focus {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
   }
   
   .form-actions {
@@ -361,10 +429,16 @@
     cursor: pointer;
     font-weight: 500;
     transition: background-color 0.3s;
+    min-height: var(--min-target-size);
   }
   
   .btn-primary:hover:not(:disabled) {
     background-color: var(--primary-color-dark);
+  }
+  
+  .btn-primary:focus {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
   }
   
   .btn-primary:disabled {
@@ -381,9 +455,17 @@
   .auth-footer a {
     color: var(--primary-color);
     text-decoration: none;
+    padding: var(--spacing-xs);
+    display: inline-block;
   }
   
   .auth-footer a:hover {
+    text-decoration: underline;
+  }
+  
+  .auth-footer a:focus {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
     text-decoration: underline;
   }
   

@@ -30,6 +30,11 @@
   let callSound: HTMLAudioElement;
   let soundsLoaded = false;
   
+  // Accessibility related elements
+  let messagesEndRef: HTMLElement;
+  let chatInputRef: HTMLTextAreaElement;
+  let chatListRef: HTMLElement;
+  
   // Subscribe to navigation to reload when chat changes via URL
   $: chatId = $page.url.searchParams.get('id');
   $: if (chatId && chatId !== currentChat?.id) {
@@ -184,11 +189,14 @@
       if (!messages.some(m => m.id === newMsg.id)) {
         messages = [...messages, newMsg];
         
-        // Auto scroll
+        // Auto scroll and announce new message for screen readers
         setTimeout(() => {
-          const messagesContainer = document.querySelector('.messages-wrapper');
-          if (messagesContainer) {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+          scrollToBottom();
+          
+          // Announce new message for screen readers
+          if (newMsg.sender_id !== $userStore.user?.id) {
+            const chatPartner = getChatPartnerName(currentChat);
+            announceNewMessage(`New message from ${chatPartner}`);
           }
         }, 50);
         
@@ -199,12 +207,35 @@
           });
         }
       }
-    } 
+    }
     
-    // Always refresh the chat list to show the latest message
+    // Update unread counts and chats list regardless
     loadChats().catch(err => {
-      console.error('Error refreshing chats:', err);
+      console.error('Error updating chats after new message:', err);
     });
+  }
+  
+  // Helper function to announce messages to screen readers
+  function announceNewMessage(message: string) {
+    const announcement = document.getElementById('sr-announcement');
+    if (announcement) {
+      announcement.textContent = message;
+    }
+  }
+  
+  // Helper to scroll to bottom of messages
+  function scrollToBottom() {
+    if (messagesEndRef) {
+      messagesEndRef.scrollIntoView({ behavior: 'smooth' });
+    }
+  }
+  
+  // Function to get chat partner name for better announcements
+  function getChatPartnerName(chat: any): string {
+    if (!chat) return 'Someone';
+    return isHiringManager ? 
+      (chat.job_seeker?.full_name || 'Job Seeker') : 
+      (chat.hiring_manager?.full_name || 'Hiring Manager');
   }
   
   // Load all chats for the current user
@@ -732,296 +763,279 @@
 </script>
 
 <svelte:head>
-  <title>Messages | HiringHub</title>
+  <title>Messages - HiringHub</title>
+  <meta name="description" content="Your conversations with job seekers and hiring managers on HiringHub">
 </svelte:head>
 
 <div class="messages-container">
-  <!-- Chat list sidebar -->
-  <div class="chat-list">
+  <!-- Screen reader announcements region -->
+  <div id="sr-announcement" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  
+  <!-- Left sidebar with chat list -->
+  <section class="chat-list-section" aria-labelledby="chat-list-heading">
+    <h1 id="chat-list-heading" class="sr-only">Conversations</h1>
     <div class="chat-list-header">
       <h2>Conversations</h2>
-      {#if isHiringManager}
-        <a href="/messages/new" class="btn-new-chat" title="Start a new conversation">
-          <span>+</span>
-        </a>
-      {/if}
     </div>
     
     {#if isLoadingChats}
-      <div class="loading-state">Loading conversations...</div>
+      <div class="loading-indicator" aria-live="polite">
+        <p>Loading conversations...</p>
+      </div>
     {:else if error}
-      <div class="error-state">{error}</div>
+      <div class="error-message" role="alert">
+        <p>{error}</p>
+      </div>
     {:else if chats.length === 0}
-      <div class="empty-state">
+      <div class="empty-state" aria-live="polite">
         <p>No conversations yet.</p>
-        {#if isHiringManager}
-          <p class="empty-hint">Start reaching out to job seekers to find the perfect candidate!</p>
-        {:else}
-          <p class="empty-hint">When hiring managers contact you, conversations will appear here.</p>
-        {/if}
       </div>
     {:else}
-      <ul class="chat-items">
-        {#each chats as chat}
-          {@const otherParticipant = getOtherParticipant(chat)}
-          {@const hasUnread = unreadCounts[chat.id] > 0}
-          <li 
-            class="chat-item {currentChat?.id === chat.id ? 'active' : ''} {hasUnread ? 'unread' : ''}" 
-            on:click={() => loadChat(chat.id)}
-          >
-            <div class="chat-avatar">
-              {#if otherParticipant.avatar}
-                <img src={otherParticipant.avatar} alt={otherParticipant.name} />
-              {:else}
-                <div class="avatar-placeholder">{otherParticipant.initial}</div>
-              {/if}
-            </div>
-            <div class="chat-info">
-              <div class="chat-header">
-                <h3 class="chat-name">{otherParticipant.name}</h3>
-                <span class="chat-time">{formatChatTime(chat.last_message_at || chat.created_at)}</span>
-              </div>
-              <div class="chat-job-title">{chat.job?.title || 'No job specified'}</div>
-              <div class="chat-preview">
-                {#if chat.last_message}
-                  {#if chat.last_sender_id === $userStore.user?.id}
-                    <span class="self-message">You: </span>
-                  {/if}
-                  {chat.last_message.length > 25 ? chat.last_message.substring(0, 25) + '...' : chat.last_message}
-                {:else}
-                  <i>No messages yet</i>
-                {/if}
-              </div>
-            </div>
-            {#if hasUnread}
-              <div class="unread-badge">{unreadCounts[chat.id]}</div>
-            {/if}
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </div>
-  
-  <!-- Message area -->
-  <div class="message-area">
-    {#if !currentChat}
-      <div class="no-chat-selected">
-        <div class="no-chat-message">
-          <h3>Select a conversation</h3>
-          <p>Choose a conversation from the list to start messaging.</p>
-        </div>
-      </div>
-    {:else}
-      <!-- Chat header -->
-      {@const otherParticipant = getOtherParticipant(currentChat)}
-      <div class="message-header">
-        <div class="participant-info">
-          <div class="participant-avatar">
-            {#if otherParticipant.avatar}
-              <img src={otherParticipant.avatar} alt={otherParticipant.name} />
-            {:else}
-              <div class="avatar-placeholder">{otherParticipant.initial}</div>
-            {/if}
-          </div>
-          <div>
-            <!-- Make participant name clickable for hiring managers -->
-            {#if isHiringManager}
-              <h3 class="participant-name clickable" on:click={() => viewApplicantProfile(otherParticipant.userId)}>
-                {otherParticipant.name}
-              </h3>
-            {:else}
-              <h3>{otherParticipant.name}</h3>
-            {/if}
-            <!-- Show job title more prominently -->
-            {#if currentChat.job}
-              <p class="job-title">Regarding: <strong>{currentChat.job.title}</strong></p>
-              <p class="company-name">{currentChat.job.company_name || ''}</p>
-            {/if}
-          </div>
-        </div>
-        
-        <div class="header-actions">
-          {#if isHiringManager}
-            <div class="call-buttons">
-              <button class="call-btn audio-call" on:click={() => startCall('audio')} title="Start Audio Call">
-                <span class="call-icon">🎧</span>
-              </button>
-              <button class="call-btn video-call" on:click={() => startCall('video')} title="Start Video Call">
-                <span class="call-icon">📹</span>
-              </button>
-            </div>
-          {/if}
-          
-          {#if currentChat.job}
-            <a href="/jobs/{currentChat.job.id}" class="view-job-link">
-              View Job
-            </a>
-          {/if}
-        </div>
-      </div>
-      
-      <!-- Messages -->
-      <div class="messages-wrapper" on:scroll={handleMessagesScroll}>
-        {#if isLoadingMessages}
-          <div class="loading-state">Loading messages...</div>
-        {:else if messages.length === 0}
-          <div class="empty-messages">
-            <p>No messages yet. Be the first to send a message!</p>
-          </div>
-        {:else}
-          <div class="message-list">
-            {#each messages as message}
-              {@const isSent = message.sender_id === $userStore.user?.id}
-              <div class="message {isSent ? 'sent' : 'received'}">
-                <div class="message-content">{message.content}</div>
-                <div class="message-meta">
-                  <span class="message-time">{formatMessageTime(message.created_at)}</span>
-                  {#if isSent}
-                    <span class="message-status">
-                      {#if message.read_at}
-                        <span class="status-read">Read</span>
-                      {:else if message.delivered_at}
-                        <span class="status-delivered">Delivered</span>
-                      {:else}
-                        <span class="status-sending">Sent</span>
-                      {/if}
-                    </span>
+      <nav>
+        <ul class="chat-list" role="list" bind:this={chatListRef}>
+          {#each chats as chat (chat.id)}
+            <li>
+              <button 
+                class="chat-item {currentChat?.id === chat.id ? 'active' : ''}" 
+                on:click={() => loadChat(chat.id)}
+                aria-current={currentChat?.id === chat.id ? 'page' : undefined}
+              >
+                <div class="chat-avatar">
+                  {#if isHiringManager}
+                    <span aria-hidden="true">{chat.job_seeker?.full_name?.charAt(0) || 'U'}</span>
+                  {:else}
+                    <span aria-hidden="true">{chat.hiring_manager?.full_name?.charAt(0) || 'U'}</span>
                   {/if}
                 </div>
-              </div>
-            {/each}
+                
+                <div class="chat-info">
+                  <div class="chat-name">
+                    {#if isHiringManager}
+                      <span>{chat.job_seeker?.full_name || 'Unknown User'}</span>
+                    {:else}
+                      <span>{chat.hiring_manager?.full_name || 'Unknown User'}</span>
+                    {/if}
+                    
+                    {#if unreadCounts[chat.id] && unreadCounts[chat.id] > 0}
+                      <span class="unread-badge" aria-label="{unreadCounts[chat.id]} unread messages">
+                        {unreadCounts[chat.id]}
+                      </span>
+                    {/if}
+                  </div>
+                  
+                  <div class="chat-preview">
+                    <span>{chat.last_message || 'New conversation'}</span>
+                  </div>
+                </div>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      </nav>
+    {/if}
+  </section>
+  
+  <!-- Right section with current chat -->
+  <section class="chat-main-section" aria-labelledby="current-chat-heading">
+    {#if currentChat}
+      <header class="chat-header">
+        <h2 id="current-chat-heading">
+          {#if isHiringManager}
+            <span>{currentChat.job_seeker?.full_name || 'Unknown User'}</span>
+          {:else}
+            <span>{currentChat.hiring_manager?.full_name || 'Unknown User'}</span>
+          {/if}
+        </h2>
+        
+        <div class="chat-actions">
+          <button 
+            class="call-button" 
+            on:click={() => initiateCall('audio')}
+            aria-label="Start audio call"
+            title="Start audio call"
+          >
+            <span aria-hidden="true">📞</span>
+          </button>
+          
+          <button 
+            class="call-button" 
+            on:click={() => initiateCall('video')}
+            aria-label="Start video call"
+            title="Start video call"
+          >
+            <span aria-hidden="true">📹</span>
+          </button>
+        </div>
+      </header>
+      
+      <div 
+        class="messages-wrapper" 
+        aria-label="Message history" 
+        role="log"
+        aria-live="polite"
+        aria-atomic="false"
+      >
+        {#if isLoadingMessages}
+          <div class="loading-indicator" aria-live="polite">
+            <p>Loading messages...</p>
           </div>
+        {:else if messages.length === 0}
+          <div class="empty-messages" aria-live="polite">
+            <p>No messages yet. Start the conversation!</p>
+          </div>
+        {:else}
+          <ul class="message-list">
+            {#each messages as message (message.id)}
+              <li class="message-item {message.sender_id === $userStore.user?.id ? 'sent' : 'received'}">
+                <div 
+                  class="message-bubble"
+                  role="article"
+                  aria-label="{message.sender_id === $userStore.user?.id ? 'You' : getChatPartnerName(currentChat)} sent: {message.content}"
+                >
+                  <div class="message-content">{message.content}</div>
+                  <div class="message-meta">
+                    <span class="message-time">
+                      {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    {#if message.sender_id === $userStore.user?.id}
+                      <span class="message-status" aria-hidden="true">
+                        {message.read ? '✓✓' : '✓'}
+                      </span>
+                      <span class="sr-only">{message.read ? 'Read' : 'Sent'}</span>
+                    {/if}
+                  </div>
+                </div>
+              </li>
+            {/each}
+          </ul>
+          <!-- Message end marker for auto-scrolling -->
+          <div bind:this={messagesEndRef} aria-hidden="true"></div>
         {/if}
       </div>
       
-      <!-- Message input -->
-      <div class="message-input-area">
-        <textarea 
-          class="message-input" 
-          placeholder="Type a message..." 
-          bind:value={newMessage}
-          on:keydown={handleKeyPress}
-        ></textarea>
-        <button class="send-button" on:click={sendMessage} disabled={!newMessage.trim()}>
-          Send
-        </button>
+      <div class="message-input-container">
+        <form 
+          on:submit|preventDefault={sendMessage}
+          class="message-form"
+          aria-label="Send message"
+        >
+          <div class="input-wrapper">
+            <label for="message-input" class="sr-only">Type a message</label>
+            <textarea 
+              id="message-input"
+              bind:this={chatInputRef}
+              bind:value={newMessage} 
+              placeholder="Type a message..."
+              rows="2"
+              on:keydown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+              aria-label="Type a message"
+            ></textarea>
+          </div>
+          
+          <button 
+            type="submit" 
+            class="send-button" 
+            disabled={!newMessage.trim() || isLoadingMessages}
+            aria-label="Send message"
+          >
+            <span aria-hidden="true">➤</span>
+          </button>
+        </form>
+      </div>
+    {:else}
+      <div class="empty-chat-state">
+        <h2 id="current-chat-heading">Select a conversation</h2>
+        <p>Choose a conversation from the list to start messaging.</p>
       </div>
     {/if}
-  </div>
+  </section>
 </div>
 
-<!-- Call Modal -->
+<!-- Incoming call modal -->
+{#if incomingCall}
+  <div 
+    class="call-modal-overlay" 
+    role="alertdialog"
+    aria-labelledby="incoming-call-title"
+    aria-describedby="incoming-call-description"
+  >
+    <div class="call-modal">
+      <h3 id="incoming-call-title">Incoming {incomingCall.type} Call</h3>
+      <p id="incoming-call-description">{incomingCall.callerName} is calling you</p>
+      <div class="call-actions">
+        <button 
+          class="answer-button" 
+          on:click={() => answerCall(incomingCall)}
+          aria-label="Answer {incomingCall.type} call"
+        >
+          <span aria-hidden="true">✓</span> Answer
+        </button>
+        <button 
+          class="decline-button" 
+          on:click={declineCall}
+          aria-label="Decline call"
+        >
+          <span aria-hidden="true">✗</span> Decline
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Video call modal component -->
 {#if isInCall}
   <VideoCallModal 
-    chatId={currentChat.id}
-    otherUserId={getOtherParticipant(currentChat).userId}
-    callType={callType}
-    isHiringManager={isHiringManager}
-    isInitiator={isCallInitiator}
-    initialMicEnabled={micEnabled}
-    initialCameraEnabled={cameraEnabled}
-    on:callEnded={handleCallEnded}
+    {callType}
+    chatId={currentChat?.id}
+    partnerId={isHiringManager ? currentChat?.job_seeker?.user_id : currentChat?.hiring_manager?.user_id}
+    partnerName={isHiringManager ? currentChat?.job_seeker?.full_name : currentChat?.hiring_manager?.full_name}
+    {isCallInitiator}
+    {micEnabled}
+    {cameraEnabled}
+    on:endCall={handleCallEnded}
   />
 {/if}
 
-<!-- Incoming Call Dialog -->
-{#if incomingCall}
-  <div class="incoming-call-dialog">
-    <div class="call-info">
-      <div class="call-icon">
-        {incomingCall?.type === 'video' ? '📹' : '🎧'}
-      </div>
-      <h3>Incoming {incomingCall?.type} Call</h3>
-      <p>From: {incomingCall?.callerName}</p>
-    </div>
-    
-    <!-- Audio/video toggle options -->
-    <div class="call-options">
-      <button 
-        class="toggle-btn {micEnabled ? '' : 'disabled'}" 
-        on:click={toggleMicBeforeAnswer}
-        title={micEnabled ? "Mute microphone" : "Unmute microphone"}
-      >
-        {micEnabled ? '🎤' : '🔇'}
-      </button>
-      
-      {#if incomingCall?.type === 'video'}
-        <button 
-          class="toggle-btn {cameraEnabled ? '' : 'disabled'}" 
-          on:click={toggleCameraBeforeAnswer}
-          title={cameraEnabled ? "Turn off camera" : "Turn on camera"}
-        >
-          {cameraEnabled ? '📹' : '📵'}
-        </button>
-      {/if}
-    </div>
-    
-    <div class="call-actions">
-      <button class="reject-btn" on:click={rejectCall}>
-        Decline
-      </button>
-      <button class="accept-btn" on:click={acceptCall}>
-        Accept
-      </button>
-    </div>
-  </div>
-{/if}
-
 <style>
-  .messages-container {
-    display: flex;
-    height: calc(100vh - 180px);
-    min-height: 500px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
+  /* Screen reader only class */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
     overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  .messages-container {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    height: calc(100vh - var(--header-height) - var(--footer-height));
+    max-height: calc(100vh - var(--header-height) - var(--footer-height));
+    overflow: hidden;
+    background-color: var(--background-color);
   }
   
-  .chat-list {
-    width: 300px;
+  /* Chat list section */
+  .chat-list-section {
     border-right: 1px solid var(--border-color);
     background-color: var(--surface-color);
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* Remove overflow from container */
-  }
-  
-  .message-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    min-width: 0; /* Ensure flex item can shrink below content size */
-  }
-  
-  .messages-wrapper {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--spacing-md);
-    background-color: var(--background-color, #fff);
-    min-height: 200px; /* Ensure there's always space for messages */
-  }
-  
-  .message-input-area {
-    display: flex;
-    padding: var(--spacing-md);
-    border-top: 1px solid var(--border-color);
-    background-color: var(--surface-color);
-    position: sticky;
-    bottom: 0;
-    z-index: 10;
+    overflow: hidden;
   }
   
   .chat-list-header {
-    padding: var(--spacing-md);
+    padding: 1rem;
     border-bottom: 1px solid var(--border-color);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    position: sticky;
-    top: 0;
-    background-color: var(--surface-color);
-    z-index: 5;
   }
   
   .chat-list-header h2 {
@@ -1029,61 +1043,55 @@
     font-size: 1.25rem;
   }
   
-  .chat-items {
+  .chat-list {
     list-style: none;
-    margin: 0;
     padding: 0;
+    margin: 0;
     overflow-y: auto;
-    flex: 1;
+    height: 100%;
   }
   
   .chat-item {
     display: flex;
-    padding: var(--spacing-md);
+    align-items: center;
+    padding: 1rem;
     border-bottom: 1px solid var(--border-color);
     cursor: pointer;
     transition: background-color 0.2s;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border-left: none;
+    border-right: none;
+    border-top: none;
   }
   
-  .chat-item:hover {
-    background-color: rgba(0, 0, 0, 0.03);
+  .chat-item:hover, .chat-item:focus {
+    background-color: var(--hover-color);
+  }
+  
+  .chat-item:focus {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: -2px;
   }
   
   .chat-item.active {
-    background-color: rgba(var(--primary-color-rgb), 0.1);
+    background-color: var(--active-item-bg-color);
     border-left: 3px solid var(--primary-color);
-  }
-  
-  .chat-item.unread {
-    background-color: rgba(var(--primary-color-rgb), 0.05);
     font-weight: 500;
   }
   
   .chat-avatar {
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
-    overflow: hidden;
-    margin-right: var(--spacing-md);
-    flex-shrink: 0;
-  }
-  
-  .chat-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  
-  .avatar-placeholder {
-    width: 100%;
-    height: 100%;
+    background-color: var(--primary-color);
+    color: white;
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--primary-color);
-    color: white;
+    margin-right: 1rem;
     font-weight: bold;
-    font-size: 1.2rem;
   }
   
   .chat-info {
@@ -1091,518 +1099,307 @@
     min-width: 0;
   }
   
-  .chat-header {
+  .chat-name {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 4px;
-  }
-  
-  .chat-name {
-    margin: 0;
-    font-size: 1rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  
-  .chat-time {
-    font-size: 0.75rem;
-    color: var(--text-muted-color);
-    white-space: nowrap;
-  }
-  
-  .chat-job-title {
-    font-size: 0.875rem;
-    color: var(--primary-color);
-    margin-bottom: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    margin-bottom: 0.25rem;
   }
   
   .chat-preview {
-    font-size: 0.875rem;
-    color: var(--text-muted-color);
+    font-size: 0.85rem;
+    color: var(--text-color-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  
-  .no-chat-selected {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    background-color: var(--background-color, #fff);
-  }
-  
-  .no-chat-message {
-    text-align: center;
-    max-width: 300px;
-    padding: var(--spacing-lg);
-  }
-  
-  .no-chat-message h3 {
-    margin-top: 0;
-    color: var(--text-color);
-  }
-  
-  .no-chat-message p {
-    color: var(--text-muted-color);
-  }
-  
-  .message-header {
-    padding: var(--spacing-md);
-    border-bottom: 1px solid var(--border-color);
-    background-color: var(--surface-color);
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  
-  .participant-info {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-  }
-  
-  .participant-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    overflow: hidden;
-    background-color: var(--primary-color);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: bold;
-  }
-  
-  .participant-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  
-  .avatar-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  
-  .participant-name.clickable {
-    cursor: pointer;
-    color: var(--primary-color);
-    transition: color 0.2s;
-  }
-  
-  .participant-name.clickable:hover {
-    text-decoration: underline;
-    color: var(--primary-color-dark);
-  }
-  
-  .job-title {
-    margin: 2px 0;
-    font-size: 0.9rem;
-    color: var(--primary-color);
-  }
-  
-  .company-name {
-    margin: 2px 0;
-    font-size: 0.8rem;
-    color: var(--text-muted-color);
-  }
-  
-  .view-job-link {
-    color: var(--primary-color);
-    text-decoration: none;
-    font-size: 0.9rem;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border: 1px solid var(--primary-color);
-    border-radius: var(--border-radius);
-    transition: background-color 0.2s;
-  }
-  
-  .view-job-link:hover {
-    background-color: var(--primary-color-light, rgba(var(--primary-color-rgb), 0.1));
-    text-decoration: none;
-  }
-  
-  .empty-messages {
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-muted-color);
-    font-style: italic;
-  }
-  
-  .message-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-  }
-  
-  .message {
-    max-width: 70%;
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-radius: var(--border-radius);
-    position: relative;
-    word-break: break-word;
-  }
-  
-  .message.sent {
-    align-self: flex-end;
-    background-color: var(--primary-color);
-    color: white;
-    border-bottom-right-radius: 4px;
-  }
-  
-  .message.received {
-    align-self: flex-start;
-    background-color: var(--surface-secondary-color, #f3f4f6);
-    color: var(--text-color);
-    border-bottom-left-radius: 4px;
-  }
-  
-  .message-meta {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: var(--spacing-xs);
-    margin-top: 4px;
-    font-size: 0.75rem;
-  }
-  
-  .message.sent .message-meta {
-    color: rgba(255, 255, 255, 0.7);
-  }
-  
-  .message.received .message-meta {
-    color: var(--text-muted-color);
-  }
-  
-  .message-status {
-    display: inline-flex;
-  }
-  
-  .status-read {
-    color: var(--success-text-color, #16a34a);
-  }
-  
-  .status-delivered {
-    color: var(--info-text-color, #0369a1);
-  }
-  
-  .status-sending {
-    color: var(--text-muted-color);
-  }
-  
-  .message-input {
-    flex: 1;
-    min-height: 50px;
-    max-height: 150px;
-    padding: var(--spacing-sm) var(--spacing-md);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    resize: none;
-    font-family: inherit;
-    font-size: inherit;
-    margin-right: var(--spacing-sm);
-  }
-  
-  .message-input:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.2);
-  }
-  
-  .send-button {
-    padding: 0 var(--spacing-md);
-    background-color: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: var(--border-radius);
-    cursor: pointer;
-    font-weight: 500;
-    align-self: flex-end;
-    height: 40px;
-    min-width: 80px;
-  }
-  
-  .send-button:hover:not(:disabled) {
-    background-color: var(--primary-color-dark);
-  }
-  
-  .send-button:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-  
-  /* Loading and error states */
-  .loading-state,
-  .error-state,
-  .empty-state {
-    padding: var(--spacing-lg);
-    text-align: center;
-    color: var(--text-muted-color);
-  }
-  
-  .error-state {
-    color: var(--error-text-color, #b91c1c);
-  }
-  
-  .empty-hint {
-    font-size: 0.875rem;
-    margin-top: var(--spacing-md);
-  }
-  
-  /* Mobile responsive adjustments */
-  @media (max-width: 768px) {
-    .messages-container {
-      flex-direction: column;
-      height: calc(100vh - 140px);
-    }
-    
-    .chat-list {
-      width: 100%;
-      height: 40%;
-      min-height: 180px;
-      border-right: none;
-      border-bottom: 1px solid var(--border-color);
-    }
-    
-    .message-area {
-      height: 60%;
-      min-height: 250px;
-    }
-    
-    .messages-wrapper {
-      min-height: 150px;
-    }
-    
-    .message-input-area {
-      padding: var(--spacing-sm);
-    }
-    
-    .message-input {
-      min-height: 40px;
-      max-height: 80px;
-    }
-    
-    .send-button {
-      min-width: 60px;
-    }
-    
-    /* Ensure message content fits on smaller screens */
-    .message {
-      max-width: 85%;
-    }
   }
   
   .unread-badge {
     background-color: var(--primary-color);
     color: white;
     border-radius: 50%;
-    min-width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    padding: 0.125rem 0.375rem;
     font-size: 0.75rem;
     font-weight: bold;
-    margin-left: var(--spacing-sm);
   }
   
-  .self-message {
-    font-style: italic;
-    color: var(--text-light-color);
-  }
-  
-  .btn-new-chat {
+  /* Chat main section */
+  .chat-main-section {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    height: 100%;
+    background-color: var(--chat-bg-color, #f5f5f5);
+  }
+  
+  .chat-header {
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    width: 32px;
-    height: 32px;
+    background-color: var(--surface-color);
+    border-bottom: 1px solid var(--border-color);
+  }
+  
+  .chat-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+  }
+  
+  .chat-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .call-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 50%;
+    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .call-button:hover, .call-button:focus {
+    background-color: var(--hover-color);
+  }
+  
+  .call-button:focus {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+  
+  /* Messages area */
+  .messages-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .message-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .message-item {
+    display: flex;
+    margin-bottom: 0.5rem;
+  }
+  
+  .message-item.sent {
+    justify-content: flex-end;
+  }
+  
+  .message-bubble {
+    max-width: 70%;
+    padding: 0.75rem 1rem;
+    border-radius: 1rem;
+    position: relative;
+  }
+  
+  .sent .message-bubble {
     background-color: var(--primary-color);
     color: white;
-    border-radius: 50%;
-    text-decoration: none;
-    font-weight: bold;
-    transition: background-color 0.2s;
+    border-bottom-right-radius: 0.25rem;
   }
   
-  .btn-new-chat:hover {
+  .received .message-bubble {
+    background-color: var(--surface-color);
+    border-bottom-left-radius: 0.25rem;
+  }
+  
+  .message-content {
+    margin-bottom: 0.25rem;
+    word-wrap: break-word;
+  }
+  
+  .message-meta {
+    display: flex;
+    justify-content: flex-end;
+    font-size: 0.75rem;
+    opacity: 0.8;
+    gap: 0.25rem;
+  }
+  
+  /* Message input */
+  .message-input-container {
+    padding: 1rem;
+    background-color: var(--surface-color);
+    border-top: 1px solid var(--border-color);
+  }
+  
+  .message-form {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .input-wrapper {
+    flex: 1;
+  }
+  
+  textarea {
+    width: 100%;
+    border-radius: 1.5rem;
+    border: 1px solid var(--border-color);
+    padding: 0.75rem 1rem;
+    resize: none;
+    font-family: inherit;
+    font-size: 1rem;
+    background-color: var(--input-bg-color);
+  }
+  
+  textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--focus-ring-color);
+  }
+  
+  .send-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    align-self: flex-end;
+  }
+  
+  .send-button:hover:not(:disabled), .send-button:focus:not(:disabled) {
     background-color: var(--primary-color-dark);
   }
   
-  .participant-info h3 {
-    margin: 0;
-    font-size: 1.1rem;
+  .send-button:focus {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
   }
   
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md, 12px);
+  .send-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   
-  .call-buttons {
-    display: flex;
-    gap: var(--spacing-sm, 8px);
-  }
-  
-  .call-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    border: none;
-    background-color: var(--surface-secondary-color, #f3f4f6);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-  }
-  
-  .call-btn:hover {
-    background-color: var(--primary-color-light, #e0f2fe);
-  }
-  
-  .call-btn.audio-call:hover {
-    background-color: var(--success-bg-color, #dcfce7);
-  }
-  
-  .call-btn.video-call:hover {
-    background-color: var(--primary-color-light, #e0f2fe);
-  }
-  
-  .call-icon {
-    font-size: 1.2rem;
-  }
-  
-  /* Incoming Call Dialog */
-  .incoming-call-dialog {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    width: 300px;
-    background-color: var(--surface-color);
-    border-radius: var(--border-radius);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    padding: var(--spacing-md);
-    z-index: 1000;
-    animation: slide-in 0.3s ease;
-  }
-  
-  .call-info {
+  /* Empty states */
+  .empty-state, .empty-messages, .empty-chat-state, .loading-indicator, .error-message {
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-bottom: var(--spacing-md);
-  }
-  
-  .call-icon {
-    font-size: 2rem;
-    margin-bottom: var(--spacing-sm);
-    animation: pulse 1.5s infinite;
-  }
-  
-  .call-info h3 {
-    margin: 0 0 var(--spacing-xs) 0;
-  }
-  
-  .call-info p {
-    margin: 0;
-    color: var(--text-muted-color);
-  }
-  
-  .call-options {
-    display: flex;
     justify-content: center;
-    gap: var(--spacing-md);
-    margin-bottom: var(--spacing-md);
+    height: 100%;
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-color-secondary);
   }
   
-  .toggle-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    border: none;
-    background-color: var(--surface-secondary-color, #f3f4f6);
-    cursor: pointer;
-    font-size: 1.2rem;
+  .empty-chat-state {
+    background-color: var(--chat-bg-color, #f5f5f5);
+  }
+  
+  /* Call modal */
+  .call-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    z-index: 1000;
   }
   
-  .toggle-btn:hover {
-    background-color: var(--surface-hover-color, #e5e7eb);
-  }
-  
-  .toggle-btn.disabled {
-    background-color: var(--error-bg-color, #fee2e2);
-    color: var(--error-text-color, #b91c1c);
+  .call-modal {
+    background-color: var(--surface-color);
+    border-radius: var(--border-radius);
+    padding: 2rem;
+    width: 400px;
+    max-width: 90%;
+    text-align: center;
   }
   
   .call-actions {
     display: flex;
-    justify-content: space-between;
-    gap: var(--spacing-md);
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 1.5rem;
   }
   
-  .accept-btn,
-  .reject-btn {
-    flex: 1;
-    padding: var(--spacing-sm);
+  .answer-button, .decline-button {
+    padding: 0.75rem 1.5rem;
     border-radius: var(--border-radius);
+    border: none;
     font-weight: 500;
     cursor: pointer;
-    border: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
   
-  .accept-btn {
-    background-color: var(--success-color, #10b981);
+  .answer-button {
+    background-color: var(--success-color, #22c55e);
     color: white;
   }
   
-  .reject-btn {
-    background-color: var(--error-text-color, #b91c1c);
+  .decline-button {
+    background-color: var(--error-color, #ef4444);
     color: white;
   }
   
-  @keyframes slide-in {
-    from { 
-      transform: translateY(-20px); 
-      opacity: 0; 
+  .answer-button:hover, .answer-button:focus,
+  .decline-button:hover, .decline-button:focus {
+    opacity: 0.9;
+  }
+  
+  .answer-button:focus, .decline-button:focus {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+  
+  /* Responsive styles */
+  @media (max-width: 768px) {
+    .messages-container {
+      grid-template-columns: 1fr;
     }
-    to { 
-      transform: translateY(0); 
-      opacity: 1; 
+    
+    .chat-list-section {
+      display: none;
+    }
+    
+    .chat-list-section.active {
+      display: flex;
+      position: absolute;
+      top: var(--header-height);
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 10;
     }
   }
   
-  @keyframes pulse {
-    0% {
-      transform: scale(1);
-      opacity: 1;
-    }
-    50% {
-      transform: scale(1.1);
-      opacity: 0.8;
-    }
-    100% {
-      transform: scale(1);
-      opacity: 1;
+  /* Animation */
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  /* Reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
     }
   }
 </style> 

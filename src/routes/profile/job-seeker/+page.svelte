@@ -27,6 +27,10 @@
 
   let message = '';
   let messageType: 'error' | 'success' | 'info' = 'error';
+  
+  // Form field references for managing focus
+  let fullNameInput: HTMLInputElement;
+  let messageTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Helper function to initialize form data
 	function initializeFormData(profile: any) {
@@ -46,6 +50,15 @@
     editMode = !editMode;
     // Clear any messages when toggling modes
     message = '';
+    
+    // When switching to edit mode, focus on the first input after render
+    if (editMode) {
+      setTimeout(() => {
+        if (fullNameInput) {
+          fullNameInput.focus();
+        }
+      }, 0);
+    }
   }
 
   // Create separate async function for profile initialization
@@ -175,869 +188,820 @@
 			if (unsubscribeUserStore) {
 				unsubscribeUserStore();
 			}
+      
+      // Clear any pending timeouts
+      if (messageTimeout) {
+        clearTimeout(messageTimeout);
+      }
     };
   });
+
+  // Handle auto-dismissing messages
+  function setTempMessage(msg: string, type: 'error' | 'success' | 'info' = 'success', duration = 5000) {
+    message = msg;
+    messageType = type;
+    
+    // Clear any existing timeout
+    if (messageTimeout) {
+      clearTimeout(messageTimeout);
+    }
+    
+    // Auto-clear message after duration
+    messageTimeout = setTimeout(() => {
+      message = '';
+    }, duration);
+  }
 
   async function handleResumeUpload(event: Event) {
     const target = event.target as HTMLInputElement;
     const file = target.files?.[0];
 
     if (!file) {
-        message = 'No file selected.';
-        messageType = 'error';
+        setTempMessage('No file selected.', 'error');
         return;
     }
 
     const currentUser = get(userStore).user;
     if (!currentUser) {
-        message = 'You must be logged in to upload a resume.';
-        messageType = 'error';
+        setTempMessage('You must be logged in to upload a resume.', 'error');
         return;
     }
 
     // Basic file type check - ONLY PDF
     const allowedTypes = ['.pdf'];
     const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    
     if (!allowedTypes.includes(fileExtension)) {
-        message = `Invalid file type. Only PDF files are allowed.`;
-        messageType = 'error';
+        setTempMessage('Invalid file type. Please upload a PDF document.', 'error');
         return;
     }
 
-    // Max file size check (e.g., 5MB)
-    const maxSizeMB = 5;
-    if (file.size > maxSizeMB * 1024 * 1024) {
-        message = `File size exceeds the ${maxSizeMB}MB limit.`;
-        messageType = 'error';
+    // Check file size - Max 5MB
+    const maxSizeInBytes = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSizeInBytes) {
+        setTempMessage('File is too large. Maximum size is 5MB.', 'error');
         return;
     }
-
-    uploadingResume = true;
-    message = ''; // Clear previous messages
-    messageType = 'success'; // Assume success unless error occurs
 
     try {
-        // Save original filename (without path) for display purposes
-        resumeFilename = file.name;
+        uploadingResume = true;
         
-        // Create a sanitized filename for storage
-        const sanitizedFilename = file.name.replace(/[^a-zA-Z0-9-_.]/g, '_');
-
-        // Upload to Supabase Storage (bucket named 'resumes')
-        const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('resumes')
-            .upload(sanitizedFilename, file, { 
-              upsert: true,
-              cacheControl: '3600' 
+        // Generate unique file path with user ID
+        const timestamp = new Date().getTime();
+        const filePath = `resumes/${currentUser.id}_${timestamp}${fileExtension}`;
+        
+        // Upload file to Supabase Storage
+        const { error: uploadError } = await supabase
+            .storage
+            .from('profiles')
+            .upload(filePath, file, {
+                cacheControl: '3600',
+                upsert: true
             });
 
-        if (uploadError) {
-            console.error('Supabase upload error:', uploadError);
-            
-            // Check if error is related to permissions
-            if (uploadError.message?.includes('permission') || uploadError.message?.includes('Unauthorized')) {
-                throw new Error(`Permission denied: ${uploadError.message}. Check Supabase storage bucket permissions.`);
-            }
-            
-            throw new Error(`Failed to upload resume: ${uploadError.message}`);
-        }
+        if (uploadError) throw uploadError;
 
-        console.log('Upload successful:', uploadData);
+        // Get public URL for the file
+        const { data: publicUrl } = supabase
+            .storage
+            .from('profiles')
+            .getPublicUrl(filePath);
 
-        // Get the public URL for the uploaded file
-        const { data: urlData } = supabase.storage
-            .from('resumes')
-            .getPublicUrl(sanitizedFilename);
+        if (!publicUrl) throw new Error("Could not generate public URL");
 
-        console.log('URL data:', urlData);
+        // Update profile with new resume URL
+        const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ 
+                resume_url: publicUrl.publicUrl,
+                resume_filename: file.name,
+                updated_at: new Date().toISOString()
+            })
+            .eq('user_id', currentUser.id);
 
-        if (!urlData || !urlData.publicUrl) {
-             console.error('Supabase getPublicUrl error: No URL returned for', sanitizedFilename);
-            throw new Error('Could not get public URL for the uploaded resume.');
-        }
+        if (updateError) throw updateError;
 
-        // Test if the URL is accessible
-        console.log('Testing URL accessibility...');
-        try {
-            const testResponse = await fetch(urlData.publicUrl, { method: 'HEAD' });
-            console.log('URL test result:', testResponse.status, testResponse.statusText);
-            
-            if (!testResponse.ok) {
-                console.warn('URL may not be publicly accessible:', testResponse.status);
-            }
-        } catch (fetchError) {
-            console.warn('Could not verify URL accessibility:', fetchError);
-            // Continue anyway as this is just a test
-        }
+        // Update local state
+        resumeUrl = publicUrl.publicUrl;
+        resumeFilename = file.name;
 
-        // Update the local state immediately
-        resumeUrl = urlData.publicUrl;
-        console.log('Resume URL set to:', resumeUrl);
+        // Refresh user profile in store
+        await userStore.refreshProfile();
         
-        message = 'Resume uploaded successfully! Remember to save your profile to persist the link.';
-        messageType = 'success';
-
-        // Clear the file input visually
-        target.value = '';
+        setTempMessage('Resume uploaded successfully!', 'success');
+        
+        // Announce success for screen readers
+        document.getElementById('upload-status')?.setAttribute('aria-label', 'Resume uploaded successfully!');
 
     } catch (error: any) {
-        console.error('Resume upload process error:', error);
-        message = `Resume upload failed: ${error.message}`;
-        messageType = 'error';
+        console.error('Resume upload error:', error);
+        setTempMessage(`Error uploading resume: ${error.message || 'Unknown error'}`, 'error');
     } finally {
         uploadingResume = false;
     }
   }
 
   async function handleProfileUpdate() {
-    const currentUser = get(userStore).user;
-    if (!currentUser) {
-        message = 'You must be logged in to update your profile.';
-        messageType = 'error';
-        return;
-    }
-
-    // Optional: Basic LinkedIn URL validation
-    if (linkedinUrl && !linkedinUrl.startsWith('https://www.linkedin.com/in/') && !linkedinUrl.startsWith('http://www.linkedin.com/in/')) { // Allow http too
-         message = 'Please enter a valid LinkedIn profile URL (e.g., https://www.linkedin.com/in/yourprofile).';
-         messageType = 'error';
-         return;
-    }
-
-    loading = true; // Use general loading for saving
-    message = '';
-    try {
-        console.log('Starting profile update with resume data:', {
-          resumeUrl,
-          resumeFilename
-        });
-        
-        const updates = {
-            full_name: fullName,
-            headline: headline,
-            bio: bio,
-            location: location,
-            linkedin_url: linkedinUrl,
-            resume_url: resumeUrl, // Use the locally updated resumeUrl
-            resume_filename: resumeFilename, // Store the filename too
-            updated_at: new Date().toISOString(), // Convert Date to string for compatibility
-        };
-
-        console.log('Updating profile with data:', updates);
-
-        const { data: updateData, error } = await supabase
-            .from('profiles')
-            .update(updates)
-            .eq('user_id', currentUser.id)
-            .select();
-
-        if (error) throw error;
-        
-        console.log('Profile update response:', updateData);
-
-        // Update store with the returned data if available, otherwise use our local updates
-        if (updateData && updateData.length > 0) {
-          userStore.set({
-            ...get(userStore),
-            profile: updateData[0]
-          });
-        } else {
-          userStore.updateProfile(updates); // Update store locally
-        }
-
-        message = isNewUser 
-          ? 'Profile created successfully! You can now browse job postings.' 
-          : 'Profile updated successfully!';
-        isNewUser = false; // Reset new user flag after first save
-        messageType = 'success';
-        editMode = false; // Switch back to view mode after successful save
-
-    } catch (error: any) {
-        console.error('Error updating profile:', error);
-        message = `Error updating profile: ${error.message}`;
-        messageType = 'error';
-    } finally {
-        loading = false;
-    }
-  }
-
-  // Add deleteResume function after handleProfileUpdate
-  async function deleteResume() {
-    if (!confirm('Are you sure you want to delete your resume? This cannot be undone.')) {
+    if (!get(userStore).user) {
+      setTempMessage('You must be logged in to update your profile.', 'error');
       return;
     }
     
-    const currentUser = get(userStore).user;
-    if (!currentUser || !resumeUrl) {
-      message = 'No resume to delete or you are not logged in.';
-      messageType = 'error';
+    // Form validation
+    if (!fullName.trim()) {
+      setTempMessage('Full name is required.', 'error');
+      fullNameInput.focus();
       return;
     }
     
-    loading = true;
-    message = '';
-    
     try {
-      // Extract the file path from the URL or use the stored filename
-      // For simplicity, we're just deleting by the filename that we stored earlier
-      if (resumeFilename) {
-        // Delete from storage
-        const { error: deleteError } = await supabase.storage
-          .from('resumes')
-          .remove([resumeFilename]);
-          
-        if (deleteError) {
-          console.error('Error deleting resume:', deleteError);
-          throw new Error(`Failed to delete resume: ${deleteError.message}`);
-        }
-      }
+      loading = true;
       
-      // Update profile to remove resume references
-      const { error: updateError } = await supabase
+      const { error } = await supabase
         .from('profiles')
         .update({
-          resume_url: null,
-          resume_filename: null,
+          full_name: fullName.trim(),
+          headline: headline.trim(),
+          bio: bio.trim(),
+          location: location.trim(),
+          linkedin_url: linkedinUrl.trim(),
           updated_at: new Date().toISOString()
         })
-        .eq('user_id', currentUser.id);
+        .eq('user_id', get(userStore).user.id);
         
-      if (updateError) throw updateError;
+      if (error) throw error;
       
-      // Update local state
-      resumeUrl = '';
-      resumeFilename = '';
+      // Refresh the profile in store
+      await userStore.refreshProfile();
       
-      // Update the user store
-      userStore.updateProfile({
-        resume_url: null,
-        resume_filename: null
-      });
-      
-      message = 'Resume deleted successfully.';
-      messageType = 'success';
+      // Success message and switch to view mode
+      setTempMessage('Profile updated successfully!', 'success');
+      editMode = false;
       
     } catch (error: any) {
-      console.error('Error deleting resume:', error);
-      message = `Failed to delete resume: ${error.message}`;
-      messageType = 'error';
+      console.error('Profile update error:', error);
+      setTempMessage(`Error updating profile: ${error.message || 'Unknown error'}`, 'error');
     } finally {
       loading = false;
     }
   }
+  
+  // Keyboard handler for cancel button
+  function handleKeyDown(event: KeyboardEvent) {
+    // If Escape key pressed while in edit mode, cancel edit
+    if (event.key === 'Escape' && editMode) {
+      cancelEdit();
+    }
+  }
+  
+  // Function to cancel edit and restore original values
+  function cancelEdit() {
+    // Restore original values from store
+    initializeFormData(get(userStore).profile);
+    editMode = false;
+    message = '';
+  }
 </script>
 
-<div class="container profile-page">
-  <h2>Your Profile</h2>
+<svelte:window on:keydown={handleKeyDown} />
 
-  {#if !$userStore.loggedIn}
-    <p>Please <a href="/login">log in</a> to view your profile.</p>
-  {:else if loading || creatingNewProfile}
-    <p>Loading profile...</p>
-  {:else if !isCorrectProfileType && !isNewUser}
-    <p class="message error">
-      {#if profileIsDefinitelyNull}
-        Your job seeker profile data could not be loaded. It might not exist yet or there was an error.
-        Please try refreshing the page. If the problem persists, contact support.
-      {:else if profileLoadAttempted}
-        Could not display profile. Your account type might not be 'job_seeker' or the profile data is missing.
-        {#if $userStore.profile?.account_type === 'hiring_manager'}
-            You are currently logged in as a Hiring Manager. <a href="/profile/hiring-manager">View Hiring Manager Profile</a>.
-        {/if}
-      {:else}
-        There was an issue loading your profile. Please try again later.
-      {/if}
-    </p>
-  {:else}
-    {#if message}
-      <p class="message {messageType}">{message}</p>
-    {/if}
+<svelte:head>
+  <title>Job Seeker Profile - HiringHub</title>
+  <meta name="description" content="Manage your job seeker profile on HiringHub">
+</svelte:head>
 
-    {#if isNewUser}
-      <div class="welcome-box">
-        <h3>Welcome to HiringHub!</h3>
-        <p>Complete your profile information to help employers find you and match you with job opportunities.</p>
-      </div>
-    {/if}
-
-    <!-- VIEW MODE -->
-    {#if !editMode}
-      <div class="profile-view">
-        <div class="profile-header">
-          <div class="profile-info">
-            <h3>{fullName || 'Your Name'}</h3>
-            {#if headline}
-              <p class="headline">{headline}</p>
-            {/if}
-            {#if location}
-              <p class="location"><i class="location-icon">📍</i> {location}</p>
-            {/if}
-          </div>
-          <button class="btn-secondary edit-profile-btn" on:click={toggleEditMode}>Edit Profile</button>
-        </div>
-
-        {#if bio}
-          <div class="profile-section">
-            <h4>About</h4>
-            <p class="bio">{bio}</p>
-          </div>
-        {/if}
-
-        {#if linkedinUrl}
-          <div class="profile-section">
-            <h4>Professional Links</h4>
-            <p>
-              <a href={linkedinUrl} target="_blank" rel="noopener noreferrer">
-                <span class="link-icon">🔗</span> LinkedIn Profile
-              </a>
-            </p>
-          </div>
-        {/if}
-
-        <!-- Resume Section -->
-        {#if resumeUrl}
-          <div class="profile-section">
-            <h4>Resume</h4>
-            <div class="resume-preview">
-              <div class="resume-actions">
-                <a href={resumeUrl} target="_blank" rel="noopener noreferrer" class="resume-link">
-                  <span class="link-icon">📄</span> View Resume
-                </a>
-                <span class="resume-format">PDF Document</span>
-              </div>
-              <div class="resume-thumbnail">
-                <div class="pdf-icon">PDF</div>
-                <p class="resume-filename">{resumeFilename || 'Resume'}</p>
-                <div class="resume-buttons">
-                  <a href={resumeUrl} download="{resumeFilename}" class="download-button">
-                    <span class="download-icon">⬇️</span> Download
-                  </a>
-                  <button type="button" class="delete-button" on:click={deleteResume}>
-                    <span class="delete-icon">🗑️</span> Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        {/if}
-
-        <!-- Empty state for incomplete profiles -->
-        {#if !headline && !bio && !location && !linkedinUrl && !resumeUrl}
-          <div class="profile-empty">
-            <p>Your profile is waiting to be completed. Click "Edit Profile" to add your information.</p>
-          </div>
-        {/if}
-      </div>
-    {:else}
-      <!-- EDIT MODE -->
-    <form on:submit|preventDefault={handleProfileUpdate} class="profile-form">
-      <div class="form-group">
-          <label for="fullName">Full Name*</label>
-          <input id="fullName" type="text" bind:value={fullName} placeholder="Your Name" disabled={loading || uploadingResume} required={isNewUser} />
-          {#if isNewUser}<small>This is how your name will appear to employers</small>{/if}
-      </div>
-
-      <div class="form-group">
-          <label for="headline">Professional Headline</label>
-        <input id="headline" type="text" bind:value={headline} placeholder="e.g., Aspiring Software Engineer" disabled={loading || uploadingResume} />
-          <small>A brief description of your professional identity</small>
-      </div>
-
-       <div class="form-group">
-        <label for="bio">Bio / Summary</label>
-          <textarea id="bio" bind:value={bio} rows="5" placeholder="Tell us about yourself, your skills, and experience..." disabled={loading || uploadingResume}></textarea>
-          <small>Summarize your background, skills, and what you're looking for</small>
-      </div>
-
-       <div class="form-group">
-        <label for="location">Location</label>
-        <input id="location" type="text" bind:value={location} placeholder="City, Country" disabled={loading || uploadingResume} />
-          <small>Where you're based or willing to work</small>
-      </div>
-
-       <div class="form-group">
-        <label for="linkedin">LinkedIn Profile URL</label>
-        <input id="linkedin" type="url" bind:value={linkedinUrl} placeholder="https://www.linkedin.com/in/yourprofile" disabled={loading || uploadingResume} />
-          <small>Link to your professional profile (optional)</small>
-      </div>
-
-       <div class="form-group resume-group">
-        <label for="resume">Resume (PDF Only)</label>
-        {#if resumeUrl}
-            <div class="current-resume">
-              <p>Current Resume: <a href={resumeUrl} target="_blank" rel="noopener noreferrer">View Resume</a></p>
-              <button type="button" class="delete-link" on:click={deleteResume}>Delete Resume</button>
-            </div>
+<div class="profile-container" role="main" aria-labelledby="profile-title">
+  {#if loading || creatingNewProfile}
+    <div class="loading-container" aria-live="polite" role="status">
+      <p class="loading-text">
+        {#if creatingNewProfile}
+          Setting up your profile...
         {:else}
-            <p>No resume uploaded.</p>
+          Loading your profile...
         {/if}
-        <input id="resume" type="file" on:change={handleResumeUpload} accept=".pdf" disabled={loading || uploadingResume} />
-         {#if uploadingResume}
-            <p>Uploading resume...</p>
-         {/if}
-        <small>Upload a new resume (PDF only, max 5MB). Save profile to update link.</small>
+      </p>
+    </div>
+  {:else if !isCorrectProfileType && profileLoadAttempted}
+    <div class="error-container" role="alert">
+      <h1>Profile Not Available</h1>
+      <p>This profile view is only for job seekers. Please use the appropriate profile page for your account type.</p>
+    </div>
+  {:else if profileIsDefinitelyNull && profileLoadAttempted}
+    <div class="error-container" role="alert">
+      <h1>Profile Not Found</h1>
+      <p>There was an error loading your profile. Please try refreshing the page.</p>
+    </div>
+  {:else}
+    <div class="profile-header">
+      <h1 id="profile-title">
+        {#if isNewUser}
+          Welcome to HiringHub!
+        {:else}
+          Job Seeker Profile
+        {/if}
+      </h1>
+      
+      {#if !editMode}
+        <button 
+          class="edit-button"
+          on:click={toggleEditMode}
+          aria-label="Edit profile"
+        >
+          Edit Profile
+        </button>
+      {/if}
+    </div>
+    
+    {#if message}
+      <div 
+        class="message {messageType}-message" 
+        role="status" 
+        aria-live="polite"
+      >
+        <p>{message}</p>
       </div>
-
-        <div class="form-actions">
-          <button type="button" class="btn-secondary" on:click={toggleEditMode} disabled={loading || uploadingResume}>
-            Cancel
-          </button>
-      <button type="submit" class="btn-primary" disabled={loading || uploadingResume}>
-        {#if loading}Saving...
-        {:else if uploadingResume}Waiting for upload...
-            {:else if isNewUser}Create Profile
-            {:else}Save Changes{/if}
-      </button>
-        </div>
-    </form>
     {/if}
+    
+    <div class="profile-content">
+      {#if editMode}
+        <!-- Edit mode - Form -->
+        <form 
+          on:submit|preventDefault={handleProfileUpdate}
+          class="profile-form"
+          aria-labelledby="form-title"
+          novalidate
+        >
+          <h2 id="form-title" class="sr-only">Edit Profile</h2>
+          
+          <div class="form-group">
+            <label for="fullName" id="fullName-label">Full Name <span class="required">*</span></label>
+            <input 
+              type="text" 
+              id="fullName" 
+              bind:this={fullNameInput}
+              bind:value={fullName} 
+              placeholder="Your full name"
+              required
+              aria-required="true"
+            />
+          </div>
+          
+          <div class="form-group">
+            <label for="headline" id="headline-label">Professional Headline</label>
+            <input 
+              type="text" 
+              id="headline" 
+              bind:value={headline} 
+              placeholder="e.g. Senior Software Engineer with 5+ years experience"
+              aria-describedby="headline-help"
+            />
+            <p id="headline-help" class="help-text">A brief professional statement that appears with your name</p>
+          </div>
+          
+          <div class="form-group">
+            <label for="bio" id="bio-label">Bio</label>
+            <textarea 
+              id="bio" 
+              bind:value={bio} 
+              rows="4" 
+              placeholder="Tell employers about yourself, your skills, and your experience"
+              aria-describedby="bio-help"
+            ></textarea>
+            <p id="bio-help" class="help-text">Describe your professional background, key skills, and career goals</p>
+          </div>
+          
+          <div class="form-group">
+            <label for="location" id="location-label">Location</label>
+            <input 
+              type="text" 
+              id="location" 
+              bind:value={location} 
+              placeholder="e.g. New York, NY"
+              aria-describedby="location-help"
+            />
+            <p id="location-help" class="help-text">City and state/province, or country</p>
+          </div>
+          
+          <div class="form-group">
+            <label for="linkedinUrl" id="linkedinUrl-label">LinkedIn Profile</label>
+            <input 
+              type="url" 
+              id="linkedinUrl" 
+              bind:value={linkedinUrl} 
+              placeholder="https://www.linkedin.com/in/yourprofile"
+              aria-describedby="linkedin-help"
+            />
+            <p id="linkedin-help" class="help-text">URL to your LinkedIn profile (optional)</p>
+          </div>
+          
+          <div class="form-actions">
+            <button 
+              type="submit" 
+              class="save-button"
+              disabled={loading}
+              aria-busy={loading}
+            >
+              {loading ? 'Saving...' : 'Save Profile'}
+            </button>
+            
+            <button 
+              type="button" 
+              class="cancel-button"
+              on:click={cancelEdit}
+              disabled={loading}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      {:else}
+        <!-- View mode -->
+        <div class="profile-view" aria-labelledby="profile-information">
+          <h2 id="profile-information" class="sr-only">Profile Information</h2>
+          
+          <div class="profile-section">
+            <h3>Personal Information</h3>
+            
+            <div class="profile-field">
+              <span class="field-label">Name:</span>
+              <span class="field-value">{fullName || 'Not provided'}</span>
+            </div>
+            
+            {#if headline}
+              <div class="profile-field">
+                <span class="field-label">Headline:</span>
+                <span class="field-value">{headline}</span>
+              </div>
+            {/if}
+            
+            {#if location}
+              <div class="profile-field">
+                <span class="field-label">Location:</span>
+                <span class="field-value">{location}</span>
+              </div>
+            {/if}
+            
+            {#if linkedinUrl}
+              <div class="profile-field">
+                <span class="field-label">LinkedIn:</span>
+                <a 
+                  href={linkedinUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  class="linkedin-link"
+                  aria-label="View LinkedIn profile (opens in a new tab)"
+                >
+                  {linkedinUrl}
+                </a>
+              </div>
+            {/if}
+          </div>
+          
+          {#if bio}
+            <div class="profile-section">
+              <h3>Bio</h3>
+              <p class="bio-text">{bio}</p>
+            </div>
+          {/if}
+        </div>
+      {/if}
+      
+      <!-- Resume section - Always visible -->
+      <div class="resume-section" aria-labelledby="resume-section-title">
+        <h3 id="resume-section-title">Resume</h3>
+        
+        <div class="resume-upload-container">
+          {#if resumeUrl}
+            <div class="current-resume">
+              <p>Current resume: 
+                <a 
+                  href={resumeUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  aria-label="View current resume (opens in a new tab)"
+                >
+                  {resumeFilename || 'View Resume'}
+                </a>
+              </p>
+            </div>
+          {:else}
+            <p class="no-resume">No resume uploaded yet</p>
+          {/if}
+          
+          <div class="upload-container">
+            <label for="resume-upload" class="upload-label">
+              Update Resume (PDF only)
+            </label>
+            <input 
+              type="file" 
+              id="resume-upload" 
+              accept=".pdf" 
+              on:change={handleResumeUpload}
+              aria-describedby="resume-help upload-status"
+              disabled={uploadingResume}
+            />
+            <p id="resume-help" class="help-text">Upload a PDF file, max 5MB</p>
+            <p id="upload-status" class="sr-only" aria-live="polite"></p>
+          </div>
+          
+          {#if uploadingResume}
+            <div class="upload-status" role="status" aria-live="polite">
+              <p>Uploading resume...</p>
+            </div>
+          {/if}
+        </div>
+      </div>
+    </div>
   {/if}
 </div>
 
 <style>
-  .profile-page {
+  /* Screen reader only class */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  .profile-container {
     max-width: 800px;
-    margin: var(--spacing-lg) auto;
-  }
-
-  /* VIEW MODE STYLES */
-  .profile-view {
-    margin-top: var(--spacing-lg);
+    margin: 0 auto;
     padding: var(--spacing-lg);
-    background-color: var(--surface-color);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
   }
-
+  
   .profile-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: var(--spacing-lg);
-    padding-bottom: var(--spacing-md);
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .profile-info h3 {
-    margin: 0 0 var(--spacing-xs) 0;
-    font-size: 1.5em;
-  }
-
-  .headline {
-    font-size: 1.1em;
-    color: var(--text-muted-color);
-    margin: var(--spacing-xs) 0;
-  }
-
-  .location {
-    display: flex;
     align-items: center;
-    font-size: 0.9em;
-    color: var(--text-light-color);
-    margin: var(--spacing-xs) 0;
-  }
-
-  .location-icon {
-    margin-right: var(--spacing-xs);
-    font-style: normal;
-  }
-
-  .profile-section {
     margin-bottom: var(--spacing-lg);
   }
-
-  .profile-section h4 {
-    margin-bottom: var(--spacing-sm);
-    color: var(--text-color);
-    font-weight: 600;
+  
+  .profile-header h1 {
+    margin: 0;
+    color: var(--heading-color);
   }
-
-  .bio {
-    white-space: pre-line; /* Preserve line breaks */
-    line-height: 1.5;
+  
+  .edit-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius);
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
   }
-
-  .link-icon {
-    margin-right: var(--spacing-xs);
+  
+  .edit-button:hover, .edit-button:focus {
+    background-color: var(--primary-color-dark);
   }
-
-  .profile-empty {
-    text-align: center;
+  
+  .edit-button:focus {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+  
+  .profile-content {
+    background-color: var(--surface-color);
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
     padding: var(--spacing-lg);
-    background-color: var(--surface-secondary-color, #f3f4f6);
-    border-radius: var(--border-radius);
-    color: var(--text-muted-color);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   }
-
-  /* EDIT MODE & EXISTING STYLES */
+  
+  /* Form styles */
   .profile-form {
-      margin-top: var(--spacing-lg);
-      padding: var(--spacing-lg);
-      background-color: var(--surface-color);
-      border: 1px solid var(--border-color);
-      border-radius: var(--border-radius);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
   }
-
-  .welcome-box {
-    background-color: var(--primary-color-light, #e0f2fe);
-    border: 1px solid var(--primary-color, #2563eb);
-    border-radius: var(--border-radius);
-    padding: var(--spacing-md);
-    margin-bottom: var(--spacing-lg);
-    text-align: center;
-  }
-
-  .welcome-box h3 {
-    color: var(--primary-color-dark, #1e40af);
-    margin-top: 0;
-  }
-
+  
   .form-group {
-    margin-bottom: var(--spacing-lg);
+    margin-bottom: var(--spacing-md);
   }
-
+  
   .form-group label {
     display: block;
     margin-bottom: var(--spacing-xs);
     font-weight: 500;
   }
-
-  .form-group input,
-  .form-group textarea {
-    width: 100%;
-    padding: var(--spacing-sm) var(--spacing-md);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    font-size: var(--font-size-base);
-    background-color: var(--input-bg-color, var(--surface-color));
-    color: var(--text-color);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  }
-
-  .form-group input:focus,
-  .form-group textarea:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.2);
-  }
-
-  textarea {
-      resize: vertical;
-      min-height: 100px;
-  }
-
-  .form-group small {
-    display: block;
-    margin-top: var(--spacing-xs);
-    color: var(--text-muted-color);
-    font-size: var(--font-size-sm);
-  }
-
-  .resume-group small {
-      display: block;
-      margin-top: var(--spacing-xs);
-      color: var(--text-muted-color);
-      font-size: var(--font-size-sm);
+  
+  .required {
+    color: var(--error-text-color);
   }
   
-   .resume-group input[type="file"] {
-      padding: var(--spacing-xs);
-      margin-top: var(--spacing-sm);
-   }
-
-  .message {
-      padding: var(--spacing-sm) var(--spacing-md);
-      margin-bottom: var(--spacing-md);
-      border-radius: var(--border-radius);
-      text-align: center;
-      font-size: var(--font-size-sm);
-      border: 1px solid transparent;
+  input, textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+    font-family: inherit;
+    transition: border-color 0.2s, box-shadow 0.2s;
   }
-
-  .message.error {
-      background-color: var(--error-bg-color, #fee2e2);
-      color: var(--error-text-color, #b91c1c);
-      border-color: var(--error-border-color, #fca5a5);
+  
+  input:focus, textarea:focus {
+    border-color: var(--primary-color);
+    outline: none;
+    box-shadow: 0 0 0 2px var(--focus-ring-color);
   }
-
-  .message.success {
-      background-color: var(--success-bg-color, #dcfce7);
-      color: var(--success-text-color, #166534);
-      border-color: var(--success-border-color, #86efac);
+  
+  textarea {
+    resize: vertical;
+    min-height: 120px;
   }
-
-  .message.info {
-      background-color: var(--info-bg-color, #e0f2fe);
-      color: var(--info-text-color, #0369a1);
-      border-color: var(--info-border-color, #93c5fd);
+  
+  .help-text {
+    font-size: 0.875rem;
+    color: var(--text-color-secondary);
+    margin-top: 0.25rem;
   }
-
+  
   .form-actions {
     display: flex;
-    justify-content: flex-end;
     gap: var(--spacing-md);
-  }
-
-  .btn-primary {
-    padding: var(--spacing-sm) var(--spacing-lg);
-      background-color: var(--primary-color);
-      color: var(--primary-contrast-color);
-      border: none;
-      border-radius: var(--border-radius);
-      cursor: pointer;
-      font-size: var(--font-size-base);
-      font-weight: 500;
-      transition: background-color 0.2s ease;
+    margin-top: var(--spacing-lg);
   }
   
-   .btn-primary:hover:not(:disabled) {
-      background-color: var(--primary-color-dark);
-  }
-
-  .btn-primary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .btn-secondary {
-    padding: var(--spacing-sm) var(--spacing-lg);
-    background-color: var(--background-color, white);
-    color: var(--text-color);
-    border: 1px solid var(--border-color);
+  .save-button, .cancel-button {
+    padding: 0.75rem 1.5rem;
     border-radius: var(--border-radius);
+    font-size: 1rem;
     cursor: pointer;
-    font-size: var(--font-size-base);
-    font-weight: 500;
-    transition: background-color 0.2s ease, border-color 0.2s ease;
-  }
-
-  .btn-secondary:hover:not(:disabled) {
-    background-color: var(--background-hover-color, #f9fafb);
-    border-color: var(--text-muted-color);
-  }
-
-  .btn-secondary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+    transition: all 0.2s;
+    min-width: 120px;
   }
   
-  .btn-text-small {
-    background: none;
-    border: none;
-    padding: 0;
-    margin-top: var(--spacing-xs);
-    font-size: var(--font-size-sm);
-    color: var(--primary-color);
-    text-decoration: underline;
-    cursor: pointer;
-    display: block;
-  }
-  
-  .btn-text-small:hover {
-    color: var(--primary-color-dark);
-  }
-  
-  .edit-profile-btn {
-    border: 2px solid var(--primary-color);
-    color: var(--primary-color);
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-  }
-  
-  .edit-profile-btn::before {
-    content: "✏️";
-    font-size: 1.1em;
-  }
-  
-  .edit-profile-btn:hover {
-    background-color: var(--primary-color-light, #e0f2fe);
-    border-color: var(--primary-color-dark, #1e40af);
-  }
-
-		a {
-			color: var(--primary-color);
-			text-decoration: underline;
-		}
-
-  /* Enhanced resume styles */
-  .resume-preview {
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    padding: var(--spacing-md);
-    margin-top: var(--spacing-sm);
-    background-color: var(--background-color, white);
-  }
-
-  .resume-preview h5 {
-    margin-top: 0;
-    margin-bottom: var(--spacing-sm);
-    font-weight: 600;
-  }
-
-  .resume-actions {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--spacing-md);
-  }
-
-  .resume-link {
-    display: inline-flex;
-    align-items: center;
-    color: var(--primary-color);
-    text-decoration: none;
-    font-weight: 500;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--border-radius);
-    transition: background-color 0.2s ease;
-  }
-
-  .resume-link:hover {
-    background-color: var(--primary-color-light, #e0f2fe);
-    text-decoration: underline;
-  }
-
-  .resume-format {
-    font-size: 0.85em;
-    color: var(--text-muted-color);
-    background-color: var(--surface-secondary-color, #f3f4f6);
-    padding: 0.2em 0.6em;
-    border-radius: 1em;
-  }
-
-  .resume-thumbnail {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    padding: var(--spacing-md);
-    background-color: var(--surface-secondary-color, #f9fafb);
-  }
-
-  .pdf-icon {
-    background-color: #f40f02;
-    color: white;
-    font-weight: bold;
-    padding: 1rem;
-    border-radius: 4px;
-    margin-bottom: var(--spacing-sm);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  }
-
-  .resume-filename {
-    font-size: 0.9em;
-    margin: var(--spacing-xs) 0;
-    text-align: center;
-    word-break: break-word;
-    max-width: 100%;
-  }
-
-  .resume-buttons {
-    display: flex;
-    gap: var(--spacing-md);
-    margin-top: var(--spacing-sm);
-    width: 100%;
-    justify-content: center;
-  }
-
-  .download-button, .delete-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--spacing-xs) var(--spacing-md);
-    border-radius: var(--border-radius);
-    font-size: var(--font-size-sm);
-    font-weight: 500;
-    transition: all 0.2s ease;
-    text-decoration: none;
-  }
-
-  .download-button {
+  .save-button {
     background-color: var(--primary-color);
-    color: var(--primary-contrast-color, white);
+    color: white;
     border: none;
   }
-
-  .download-button:hover {
+  
+  .save-button:hover:not(:disabled), .save-button:focus:not(:disabled) {
     background-color: var(--primary-color-dark);
   }
-
-  .delete-button {
-    background-color: var(--error-bg-color, #fee2e2);
-    color: var(--error-text-color, #b91c1c);
-    border: 1px solid var(--error-border-color, #fca5a5);
-    cursor: pointer;
+  
+  .save-button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
   }
-
-  .delete-button:hover {
-    background-color: var(--error-text-color, #b91c1c);
-    color: white;
-  }
-
-  .download-icon, .delete-icon {
-    margin-right: var(--spacing-xs);
-  }
-
-  /* Edit mode resume styling */
-  .current-resume {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--spacing-sm);
-    background-color: var(--surface-secondary-color, #f9fafb);
+  
+  .cancel-button {
+    background-color: var(--surface-color);
+    color: var(--text-color);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
+  }
+  
+  .cancel-button:hover, .cancel-button:focus {
+    background-color: var(--hover-color);
+  }
+  
+  .save-button:focus, .cancel-button:focus {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+  
+  /* Profile view styles */
+  .profile-view {
+    margin-bottom: var(--spacing-lg);
+  }
+  
+  .profile-section {
+    margin-bottom: var(--spacing-lg);
+  }
+  
+  .profile-section h3 {
+    margin-top: 0;
+    margin-bottom: var(--spacing-md);
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--heading-color);
+  }
+  
+  .profile-field {
     margin-bottom: var(--spacing-sm);
+    display: flex;
+    flex-wrap: wrap;
   }
-
-  .current-resume p {
-    margin: 0;
-  }
-
-  .current-resume a {
-    color: var(--primary-color);
+  
+  .field-label {
     font-weight: 500;
+    margin-right: var(--spacing-sm);
+    min-width: 100px;
+  }
+  
+  .field-value {
+    color: var(--text-color);
+    flex: 1;
+  }
+  
+  .bio-text {
+    white-space: pre-line;
+    line-height: 1.6;
+  }
+  
+  .linkedin-link {
+    color: var(--primary-color);
     text-decoration: none;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--border-radius);
-    transition: background-color 0.2s ease;
-    display: inline-flex;
-    align-items: center;
+    word-break: break-all;
   }
-
-  .current-resume a::before {
-    content: "📄";
-    margin-right: var(--spacing-xs);
-  }
-
-  .current-resume a:hover {
-    background-color: var(--primary-color-light, #e0f2fe);
+  
+  .linkedin-link:hover, .linkedin-link:focus {
     text-decoration: underline;
   }
-
-  .delete-link {
-    background: none;
-    color: var(--error-text-color, #b91c1c);
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border: 1px solid transparent;
-    font-size: var(--font-size-sm);
+  
+  .linkedin-link:focus {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+  
+  /* Resume section */
+  .resume-section {
+    margin-top: var(--spacing-lg);
+    padding-top: var(--spacing-lg);
+    border-top: 1px solid var(--border-color);
+  }
+  
+  .resume-section h3 {
+    margin-top: 0;
+    margin-bottom: var(--spacing-md);
+  }
+  
+  .resume-upload-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+  
+  .current-resume {
+    padding: var(--spacing-md);
+    background-color: var(--surface-secondary-color, #f8fafc);
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+  }
+  
+  .current-resume a {
+    color: var(--primary-color);
+    text-decoration: none;
     font-weight: 500;
+  }
+  
+  .current-resume a:hover, .current-resume a:focus {
+    text-decoration: underline;
+  }
+  
+  .current-resume a:focus {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+  
+  .no-resume {
+    color: var(--text-color-secondary);
+    font-style: italic;
+  }
+  
+  .upload-container {
+    margin-top: var(--spacing-sm);
+  }
+  
+  .upload-label {
+    display: inline-block;
+    background-color: var(--primary-color);
+    color: white;
+    padding: 0.5rem 1rem;
     border-radius: var(--border-radius);
     cursor: pointer;
-    transition: all 0.2s ease;
+    margin-bottom: var(--spacing-sm);
+    transition: background-color 0.2s;
   }
-
-  .delete-link:hover {
+  
+  .upload-label:hover, .upload-label:focus-within {
+    background-color: var(--primary-color-dark);
+  }
+  
+  input[type="file"] {
+    width: 0.1px;
+    height: 0.1px;
+    opacity: 0;
+    overflow: hidden;
+    position: absolute;
+    z-index: -1;
+  }
+  
+  input[type="file"]:focus + label {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+  
+  .upload-status {
+    margin-top: var(--spacing-sm);
+    color: var(--primary-color);
+    font-style: italic;
+  }
+  
+  /* Loading and error containers */
+  .loading-container, .error-container {
+    padding: var(--spacing-lg);
+    border-radius: var(--border-radius);
+    text-align: center;
+  }
+  
+  .loading-container {
+    background-color: var(--surface-color);
+    border: 1px solid var(--border-color);
+    margin-bottom: var(--spacing-lg);
+  }
+  
+  .loading-text {
+    color: var(--text-color-secondary);
+    font-style: italic;
+  }
+  
+  .error-container {
     background-color: var(--error-bg-color, #fee2e2);
-    border-color: var(--error-border-color, #fca5a5);
-    text-decoration: none;
+    border: 1px solid var(--error-text-color, #b91c1c);
   }
-
-  .delete-link::before {
-    content: "🗑️";
-    margin-right: var(--spacing-xs);
+  
+  .error-container h1 {
+    color: var(--error-text-color, #b91c1c);
+    margin-top: 0;
+  }
+  
+  /* Message styling */
+  .message {
+    padding: var(--spacing-md);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-lg);
+    font-weight: 500;
+  }
+  
+  .message p {
+    margin: 0;
+  }
+  
+  .error-message {
+    background-color: var(--error-bg-color, #fee2e2);
+    color: var(--error-text-color, #b91c1c);
+    border-left: 4px solid var(--error-text-color, #b91c1c);
+  }
+  
+  .success-message {
+    background-color: var(--success-bg-color, #dcfce7);
+    color: var(--success-text-color, #166534);
+    border-left: 4px solid var(--success-text-color, #166534);
+  }
+  
+  .info-message {
+    background-color: var(--info-bg-color, #e0f2fe);
+    color: var(--info-text-color, #0369a1);
+    border-left: 4px solid var(--info-text-color, #0369a1);
+  }
+  
+  /* Media queries for responsive design */
+  @media (max-width: 768px) {
+    .profile-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--spacing-md);
+    }
+    
+    .edit-button {
+      align-self: flex-start;
+    }
+    
+    .form-actions {
+      flex-direction: column;
+    }
+    
+    .save-button, .cancel-button {
+      width: 100%;
+    }
+    
+    .profile-field {
+      flex-direction: column;
+    }
+    
+    .field-label {
+      margin-bottom: 0.25rem;
+    }
+  }
+  
+  /* Reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    .edit-button,
+    .save-button,
+    .cancel-button,
+    .upload-label,
+    input,
+    textarea {
+      transition: none;
+    }
   }
 </style> 

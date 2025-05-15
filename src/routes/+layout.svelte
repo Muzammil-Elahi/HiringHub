@@ -20,6 +20,8 @@
 	// State for unread messages count
 	let unreadMessagesCount = 0;
 	let originalPathForThisLoad: string | null = null; // Renamed and will be set once
+	// State for mobile menu
+	let isMobileMenuOpen = false;
 
 	// Function to check for unread messages
 	async function checkUnreadMessages() {
@@ -232,6 +234,18 @@
 		}
 	}
 
+	// Toggle mobile menu
+	function toggleMobileMenu() {
+		isMobileMenuOpen = !isMobileMenuOpen;
+	}
+
+	// Handle keyboard navigation in mobile menu
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape' && isMobileMenuOpen) {
+			isMobileMenuOpen = false;
+		}
+	}
+
 	// Determine profile link based on account type
 	$: profileLink = $userStore.profile?.account_type === 'job_seeker'
 		? '/profile/job-seeker'
@@ -244,155 +258,407 @@
 	$: jobBoardLink = '/jobs/board';
 	$: postJobLink = '/jobs/post';
 	$: applicationsLink = '/profile/job-seeker/applications';
+	
+	// Added for accessibility - determine current page
+	$: currentPath = browser ? window.location.pathname : '';
 </script>
 
 {#if $authStore.loading && !$authStore.error}
 	<LoadingScreen message={profileLoading ? "Loading profile..." : "Processing authentication..."} />
 {/if}
 
-<nav>
-	{#if $userStore.loggedIn}
-		<!-- Logged-in user links -->
-		<div class="nav-left">
-			<a href={profileLink}>Profile</a>
-			<!-- Add links based on account type -->
-			{#if $userStore.profile?.account_type === 'hiring_manager'}
-				 <a href={postJobLink}>Post Job</a>
-			{:else if $userStore.profile?.account_type === 'job_seeker'}
-				 <a href={jobBoardLink}>Job Board</a>
-				 <a href={applicationsLink}>Applications</a>
-			{/if}
-			<!-- Add messages link for all users with unread notification -->
-			<a href="/messages" class="messages-link">
-				Messages
-				{#if unreadMessagesCount > 0}
-					<span class="notification-badge">{unreadMessagesCount}</span>
-				{/if}
-			</a>
-		</div>
-		
-		<div class="nav-center">
-			<a href="/" class="nav-title">HiringHub</a>
-		</div>
-		
-		<div class="nav-right">
-			<!-- Theme toggle now to the left of logout -->
-			<div class="theme-toggle-wrapper">
-				<ThemeToggle />
-			</div>
-			<!-- Use a button for actions like logout -->
-			<button type="button" class="logout-link" on:click={handleLogout}>Logout</button>
-		</div>
-	{:else}
-		<!-- Logged-out user links -->
-		<div class="nav-left">
-			<a href="/login">Login</a>
-			<a href="/register">Register</a>
-		</div>
-		
-		<div class="nav-center">
-			<a href="/" class="nav-title">HiringHub</a>
-		</div>
-		
-		<div class="nav-right">
-			<div class="theme-toggle-wrapper">
-				<ThemeToggle />
-			</div>
-		</div>
-	{/if}
-</nav>
+<div class="skip-to-content">
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+</div>
 
-<main>
+<header>
+	<nav aria-label="Main navigation">
+		<div class="nav-container">
+			<div class="nav-logo">
+				<a href="/" class="nav-title" aria-label="HiringHub Home">HiringHub</a>
+			</div>
+			
+			<button 
+				class="mobile-menu-toggle" 
+				aria-expanded={isMobileMenuOpen} 
+				aria-controls="nav-menu"
+				aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
+				on:click={toggleMobileMenu}
+			>
+				<span class="menu-icon"></span>
+			</button>
+			
+			<div id="nav-menu" class={`nav-menu ${isMobileMenuOpen ? 'is-open' : ''}`} on:keydown={handleKeydown}>
+				{#if $userStore.loggedIn}
+					<!-- Logged-in user links -->
+					<ul class="nav-links">
+						<li>
+							<a 
+								href={profileLink} 
+								aria-current={currentPath.includes('/profile') ? 'page' : undefined}
+							>
+								Profile
+							</a>
+						</li>
+						<!-- Add links based on account type -->
+						{#if $userStore.profile?.account_type === 'hiring_manager'}
+							<li>
+								<a 
+									href={postJobLink} 
+									aria-current={currentPath.includes('/jobs/post') ? 'page' : undefined}
+								>
+									Post Job
+								</a>
+							</li>
+						{:else if $userStore.profile?.account_type === 'job_seeker'}
+							<li>
+								<a 
+									href={jobBoardLink} 
+									aria-current={currentPath.includes('/jobs/board') ? 'page' : undefined}
+								>
+									Job Board
+								</a>
+							</li>
+							<li>
+								<a 
+									href={applicationsLink} 
+									aria-current={currentPath.includes('/applications') ? 'page' : undefined}
+								>
+									Applications
+								</a>
+							</li>
+						{/if}
+						<!-- Add messages link for all users with unread notification -->
+						<li>
+							<a 
+								href="/messages" 
+								class="messages-link"
+								aria-label={unreadMessagesCount > 0 ? `Messages (${unreadMessagesCount} unread)` : "Messages"}
+								aria-current={currentPath.includes('/messages') ? 'page' : undefined}
+							>
+								Messages
+								{#if unreadMessagesCount > 0}
+									<span class="notification-badge" aria-hidden="true">{unreadMessagesCount}</span>
+								{/if}
+							</a>
+						</li>
+					</ul>
+					
+					<div class="nav-controls">
+						<div class="theme-toggle-wrapper" aria-label="Theme toggle">
+							<ThemeToggle />
+						</div>
+						<!-- Use a button for actions like logout -->
+						<button type="button" class="logout-link" on:click={handleLogout}>
+							Logout
+						</button>
+					</div>
+				{:else}
+					<!-- Logged-out user links -->
+					<ul class="nav-links">
+						<li>
+							<a 
+								href="/login" 
+								aria-current={currentPath === '/login' ? 'page' : undefined}
+							>
+								Login
+							</a>
+						</li>
+						<li>
+							<a 
+								href="/register" 
+								aria-current={currentPath === '/register' ? 'page' : undefined}
+							>
+								Register
+							</a>
+						</li>
+					</ul>
+					
+					<div class="nav-controls">
+						<div class="theme-toggle-wrapper" aria-label="Theme toggle">
+							<ThemeToggle />
+						</div>
+					</div>
+				{/if}
+			</div>
+		</div>
+	</nav>
+</header>
+
+<main id="main-content">
 	{#if profileLoading && $userStore.loggedIn}
-		<p>Loading user profile...</p> <!-- Show profile loading indicator -->
+		<div role="status" aria-live="polite">
+			<p>Loading user profile...</p>
+		</div>
 	{:else}
 		<slot /> <!-- Page content is rendered here -->
 	{/if}
 </main>
 
-<footer>
-	<p>© {new Date().getFullYear()} HiringHub. All rights reserved.</p>
+<footer role="contentinfo">
+	<div class="footer-content">
+		<p>&copy; {new Date().getFullYear()} HiringHub. All rights reserved.</p>
+		<nav aria-label="Footer navigation">
+			<ul class="footer-links">
+				<li><a href="/pages/about">About</a></li>
+				<li><a href="/pages/privacy-policy">Privacy Policy</a></li>
+				<li><a href="/pages/terms">Terms of Service</a></li>
+			</ul>
+		</nav>
+	</div>
 </footer>
 
 <style>
-	/* Styles moved from App.svelte (keep them the same or adapt) */
-    nav button.logout-link {
-			/* Style button like a link */
-			background: none;
-			border: none;
-			padding: 0;
-			font: inherit;
-			cursor: pointer;
-			outline: inherit;
-			/* Styling */
-			color: var(--error-text-color, #b91c1c);
-			font-weight: 500;
-			margin-left: var(--spacing-md, 24px); /* Space from theme toggle */
-    }
-    nav button.logout-link:hover {
-        color: var(--error-border-color, #fca5a5);
-				text-decoration: underline;
-    }
-	nav {
-		background-color: var(--surface-color, #f9fafb);
-		padding: var(--spacing-sm, 16px) var(--spacing-md, 24px);
-		border-bottom: 1px solid var(--border-color, #e5e7eb);
-		margin-bottom: var(--spacing-lg, 32px);
-        display: flex; /* Use flexbox for alignment */
-        align-items: center;
-        justify-content: space-between;
+	/* Improved accessibility styles */
+	:global(.skip-link) {
+		position: absolute;
+		top: -40px;
+		left: 0;
+		background: var(--primary-color);
+		color: white;
+		padding: 8px;
+		z-index: 100;
+		transition: top 0.1s ease-in;
 	}
-
-	.nav-left {
+	
+	:global(.skip-link:focus) {
+		top: 0;
+	}
+	
+	header {
+		background-color: var(--surface-color, #f9fafb);
+		border-bottom: 1px solid var(--border-color, #d1d5db);
+		margin-bottom: var(--spacing-lg, 32px);
+	}
+	
+	/* Updated navigation styles */
+	nav {
+		padding: var(--spacing-sm, 16px) var(--spacing-md, 24px);
+	}
+	
+	.nav-container {
 		display: flex;
 		align-items: center;
-		gap: var(--spacing-md);
+		justify-content: space-between;
+		max-width: 1200px;
+		margin: 0 auto;
+		position: relative;
 	}
-
-	.nav-center {
-		position: absolute;
-		left: 50%;
-		transform: translateX(-50%);
+	
+	.nav-logo {
+		display: flex;
+		align-items: center;
 	}
-
+	
 	.nav-title {
 		font-size: 1.5rem;
 		font-weight: 700;
 		color: var(--primary-color);
 		text-decoration: none;
 	}
+	
+	.nav-title:focus {
+		outline: var(--focus-ring-width) solid var(--focus-ring-color);
+		outline-offset: var(--focus-ring-offset);
+	}
+	
+	.nav-menu {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		flex-grow: 1;
+		margin-left: var(--spacing-lg);
+	}
+	
+	.nav-links {
+		display: flex;
+		list-style: none;
+		gap: var(--spacing-md);
+		margin: 0;
+		padding: 0;
+	}
+	
+	.nav-links a {
+		font-weight: 500;
+		color: var(--primary-color, #0d47a1);
+		text-decoration: none;
+		padding: var(--spacing-xs) var(--spacing-sm);
+		border-radius: var(--border-radius);
+	}
+	
+	.nav-links a:hover {
+		text-decoration: underline;
+		color: var(--primary-color-dark, #002171);
+	}
+	
+	.nav-links a:focus {
+		outline: var(--focus-ring-width) solid var(--focus-ring-color);
+		outline-offset: var(--focus-ring-offset);
+	}
+	
+	.nav-links a[aria-current="page"] {
+		font-weight: 700;
+		border-bottom: 2px solid var(--primary-color);
+	}
+	
+	.nav-controls {
+		display: flex;
+		align-items: center;
+		gap: var(--spacing-md);
+	}
+	
+	/* Mobile menu toggle */
+	.mobile-menu-toggle {
+		display: none;
+		background: none;
+		border: none;
+		width: 40px;
+		height: 40px;
+		position: relative;
+		cursor: pointer;
+		z-index: 20;
+	}
+	
+	.menu-icon {
+		display: block;
+		position: relative;
+		width: 24px;
+		height: 2px;
+		background-color: var(--primary-color);
+		margin: 0 auto;
+		transition: background-color 0.3s;
+	}
+	
+	.menu-icon::before,
+	.menu-icon::after {
+		content: '';
+		position: absolute;
+		width: 24px;
+		height: 2px;
+		background-color: var(--primary-color);
+		transition: transform 0.3s;
+	}
+	
+	.menu-icon::before {
+		top: -6px;
+	}
+	
+	.menu-icon::after {
+		bottom: -6px;
+	}
 
-	.nav-right {
+	[aria-expanded="true"] .menu-icon {
+		background-color: transparent;
+	}
+	
+	[aria-expanded="true"] .menu-icon::before {
+		transform: rotate(45deg);
+		top: 0;
+	}
+	
+	[aria-expanded="true"] .menu-icon::after {
+		transform: rotate(-45deg);
+		bottom: 0;
+	}
+
+	/* Logout button style with accessibility */
+	nav button.logout-link {
+		background: none;
+		border: none;
+		padding: var(--spacing-xs) var(--spacing-sm);
+		font: inherit;
+		cursor: pointer;
+		color: var(--error-text-color, #9b0000);
+		font-weight: 500;
+		border-radius: var(--border-radius);
+	}
+	
+	nav button.logout-link:hover {
+		color: var(--error-border-color, #fca5a5);
+		text-decoration: underline;
+	}
+	
+	nav button.logout-link:focus {
+		outline: var(--focus-ring-width) solid var(--focus-ring-color);
+		outline-offset: var(--focus-ring-offset);
+	}
+
+	/* Messages notification */
+	.messages-link {
+		position: relative;
+		padding-right: 20px;
+	}
+	
+	.notification-badge {
+		position: absolute;
+		top: -6px;
+		right: 0;
+		background-color: var(--error-text-color, #9b0000);
+		color: white;
+		border-radius: 50%;
+		font-size: 0.7rem;
+		width: 18px;
+		height: 18px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-weight: bold;
+	}
+	
+	/* Theme Toggle styles */
+	.theme-toggle-wrapper {
 		display: flex;
 		align-items: center;
 	}
 
-	nav a {
-		font-weight: 500;
-		color: var(--primary-color, #2563eb);
-		text-decoration: none;
-		cursor: pointer;
-	}
-
-	nav a:hover {
-		text-decoration: underline;
-		color: var(--secondary-color, #14b8a6);
-	}
-
+	/* Main content area */
 	main {
-		/* Ensure main takes up space between nav and footer */
 		flex-grow: 1;
 		padding: 0 var(--spacing-md, 24px);
-		/* min-height: calc(100vh - 150px); Remove fixed min-height */
+		max-width: 1200px;
+		margin: 0 auto;
+		width: 100%;
 	}
 
+	/* Footer styles */
 	footer {
-		text-align: center;
+		background-color: var(--surface-color);
 		padding: var(--spacing-lg, 32px) var(--spacing-md, 24px);
 		margin-top: var(--spacing-xl, 48px);
-		border-top: 1px solid var(--border-color, #e5e7eb);
-		color: var(--text-light-color, #6b7280);
-		font-size: 0.9rem;
+		border-top: 1px solid var(--border-color, #d1d5db);
+		color: var(--text-light-color, #606770);
+	}
+	
+	.footer-content {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--spacing-md);
+		max-width: 1200px;
+		margin: 0 auto;
+	}
+	
+	.footer-links {
+		display: flex;
+		list-style: none;
+		gap: var(--spacing-lg);
+		margin: 0;
+		padding: 0;
+	}
+	
+	.footer-links a {
+		color: var(--text-muted-color);
+		text-decoration: none;
+	}
+	
+	.footer-links a:hover {
+		text-decoration: underline;
+		color: var(--primary-color);
+	}
+	
+	.footer-links a:focus {
+		outline: var(--focus-ring-width) solid var(--focus-ring-color);
+		outline-offset: var(--focus-ring-offset);
 	}
 
 	/* Ensure body takes full height for footer pushing */
@@ -401,36 +667,63 @@
 		flex-direction: column;
 		min-height: 100vh;
 	}
-	:global(#app) { /* Target the mount point if necessary */
+	
+	:global(#svelte) {
 		display: flex;
 		flex-direction: column;
 		flex-grow: 1;
 	}
-
-	.messages-link {
-        position: relative;
-        padding-right: 8px;
-    }
-    
-    .notification-badge {
-        position: absolute;
-        top: -6px;
-        right: -6px;
-        background-color: var(--error-text-color, #b91c1c);
-        color: white;
-        border-radius: 50%;
-        font-size: 0.7rem;
-        width: 18px;
-        height: 18px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-    }
 	
-	/* Theme Toggle styles */
-	.theme-toggle-wrapper {
-		display: flex;
-		align-items: center;
+	/* Responsive styles */
+	@media (max-width: 768px) {
+		.mobile-menu-toggle {
+			display: block;
+		}
+		
+		.nav-menu {
+			position: fixed;
+			top: 0;
+			right: -100%;
+			width: 80%;
+			max-width: 300px;
+			height: 100vh;
+			background-color: var(--surface-color);
+			flex-direction: column;
+			justify-content: flex-start;
+			gap: var(--spacing-xl);
+			padding: 80px var(--spacing-md) var(--spacing-md);
+			box-shadow: var(--box-shadow-lg);
+			transition: right 0.3s ease;
+			z-index: 10;
+			margin-left: 0;
+		}
+		
+		.nav-menu.is-open {
+			right: 0;
+		}
+		
+		.nav-links {
+			flex-direction: column;
+			width: 100%;
+		}
+		
+		.nav-links a {
+			display: block;
+			padding: var(--spacing-sm);
+		}
+		
+		.nav-controls {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+		
+		.footer-content {
+			text-align: center;
+		}
+		
+		.footer-links {
+			flex-direction: column;
+			gap: var(--spacing-sm);
+		}
 	}
 </style>

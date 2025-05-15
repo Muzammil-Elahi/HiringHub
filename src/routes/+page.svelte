@@ -11,129 +11,128 @@
 	// You can keep other script logic if needed
 </script>
 
-<div class="container">
-	<div class="project-title">
-		<h1 class="title-text">HiringHub</h1>
-		<p class="title-tagline">Where Talent Meets Demand</p>
-	</div>
-	
-	<header class="hero">
-		<h1>Find Your Perfect Match: AI-Powered Job Matching That Works</h1>
-		<p class="subheadline">
-			Connect with opportunities that align with your skills and experience, powered by intelligent
-			matching technology.
-		</p>
-		<div class="cta-buttons">
-			<!-- Update buttons to use standard links -->
-			<a href="/register" class="cta-seeker button-primary">Upload Your Resume</a>
-			<a href="/register" class="cta-hiring button-secondary">Find Top Talent</a>
+<div class="container" role="document">
+	<header class="site-header">
+		<div class="project-title">
+			<h1 class="title-text">HiringHub</h1>
+			<p class="title-tagline">Where Talent Meets Demand</p>
 		</div>
 	</header>
+	
+	<main id="main-content">
+		<section class="hero" aria-labelledby="hero-heading">
+			<h2 id="hero-heading" class="hero-heading">Find Your Perfect Match: AI-Powered Job Matching That Works</h2>
+			<p class="subheadline">
+				Connect with opportunities that align with your skills and experience, powered by intelligent
+				matching technology.
+			</p>
+			<div class="cta-buttons">
+				<a href="/register" class="cta-seeker button-primary" aria-label="Upload your resume to get started as a job seeker">Upload Your Resume</a>
+				<a href="/register" class="cta-hiring button-secondary" aria-label="Register to find top talent as an employer">Find Top Talent</a>
+			</div>
+		</section>
 
-	<section class="supporting-statement text-center mb-5">
-		<p class="italic text-lg">
-			Our AI matching algorithm analyzes skills, experience, and qualifications to create meaningful
-			connections between talented professionals and the companies that need them.
-		</p>
-	</section>
+		<section class="supporting-statement text-center mb-5" aria-label="About our matching algorithm">
+			<p class="italic text-lg">
+				Our AI matching algorithm analyzes skills, experience, and qualifications to create meaningful
+				connections between talented professionals and the companies that need them.
+			</p>
+		</section>
 
-	<section class="benefits">
-		<h2 class="text-center mb-4">Key Benefits</h2>
-		<div class="grid grid-cols-2">
-			<!-- Grid automatically stacks on mobile due to app.css -->
-			<div class="benefit-group">
-				<h3>For Job Seekers</h3>
-				<ul>
-					<li>
-						<strong>Discover Your Perfect Fit:</strong> Stop scrolling through endless job listings.
-						Our AI technology matches your skills and experience to opportunities where you'll
-						truly excel.
-					</li>
-					<li>
-						<strong>Save Time, Apply Smarter:</strong> Focus on opportunities that match your
-						profile. See your match percentage and understand exactly why you're a good fit.
-					</li>
-					<li>
-						<strong>Career Growth Insights:</strong> Identify skill gaps and growth opportunities
-						based on the positions you're interested in.
-					</li>
-				</ul>
+		<section class="benefits" aria-labelledby="benefits-heading">
+			<h2 id="benefits-heading" class="text-center mb-4">Key Benefits</h2>
+			<div class="grid grid-cols-2">
+				<div class="benefit-group">
+					<h3 id="seeker-benefits">For Job Seekers</h3>
+					<ul aria-labelledby="seeker-benefits">
+						<li>
+							<strong>Discover Your Perfect Fit:</strong> Stop scrolling through endless job listings.
+							Our AI technology matches your skills and experience to opportunities where you'll
+							truly excel.
+						</li>
+						<li>
+							<strong>Save Time, Apply Smarter:</strong> Focus on opportunities that match your
+							profile. See your match percentage and understand exactly why you're a good fit.
+						</li>
+						<li>
+							<strong>Career Growth Insights:</strong> Identify skill gaps and growth opportunities
+							based on the positions you're interested in.
+						</li>
+					</ul>
+				</div>
+				<div class="benefit-group">
+					<h3 id="hiring-benefits">For Hiring Managers</h3>
+					<ul aria-labelledby="hiring-benefits">
+						<li>
+							<strong>Quality Over Quantity:</strong> Stop wading through hundreds of resumes. We'll
+							connect you with candidates who truly match your requirements.
+						</li>
+						<li>
+							<strong>Efficient Hiring Pipeline:</strong> Review candidates ranked by match
+							percentage and quickly identify those with the specific skills and experience you
+							need.
+						</li>
+						<li>
+							<strong>Find Hidden Talent:</strong> Discover qualified candidates who might be
+							overlooked in traditional hiring processes.
+						</li>
+					</ul>
+				</div>
 			</div>
-			<div class="benefit-group">
-				<h3>For Hiring Managers</h3>
-				<ul>
-					<li>
-						<strong>Quality Over Quantity:</strong> Stop wading through hundreds of resumes. We'll
-						connect you with candidates who truly match your requirements.
-					</li>
-					<li>
-						<strong>Efficient Hiring Pipeline:</strong> Review candidates ranked by match
-						percentage and quickly identify those with the specific skills and experience you
-						need.
-					</li>
-					<li>
-						<strong>Find Hidden Talent:</strong> Discover qualified candidates who might be
-						overlooked in traditional hiring processes.
-					</li>
-				</ul>
-			</div>
-		</div>
-	</section>
+		</section>
 
-	<section class="how-it-works">
-		<h2 class="text-center mb-4">How It Works</h2>
-		<div class="grid grid-cols-2">
-			<div class="how-group">
-				<h3>For Job Seekers</h3>
-				<ol>
-					<li>Upload Your Resume - Our AI analyzes your skills and experience</li>
-					<li>Review Your Profile - Verify and enhance your professional information</li>
-					<li>Explore Matches - Discover opportunities aligned with your qualifications</li>
-					<li>Apply With Confidence - Focus on positions where you're a strong match</li>
-				</ol>
+		<section class="how-it-works" aria-labelledby="how-heading">
+			<h2 id="how-heading" class="text-center mb-4">How It Works</h2>
+			<div class="grid grid-cols-2">
+				<div class="how-group">
+					<h3 id="seeker-steps">For Job Seekers</h3>
+					<ol aria-labelledby="seeker-steps">
+						<li>Upload Your Resume - Our AI analyzes your skills and experience</li>
+						<li>Review Your Profile - Verify and enhance your professional information</li>
+						<li>Explore Matches - Discover opportunities aligned with your qualifications</li>
+						<li>Apply With Confidence - Focus on positions where you're a strong match</li>
+					</ol>
+				</div>
+				<div class="how-group">
+					<h3 id="hiring-steps">For Hiring Managers</h3>
+					<ol aria-labelledby="hiring-steps">
+						<li>Post Your Job - Detail the skills and qualifications you need</li>
+						<li>Review Matched Candidates - See ranked applicants based on match quality</li>
+						<li>Engage With Top Prospects - Easily connect with promising candidates</li>
+						<li>Build Your Team - Make confident hiring decisions based on objective matching</li>
+					</ol>
+				</div>
 			</div>
-			<div class="how-group">
-				<h3>For Hiring Managers</h3>
-				<ol>
-					<li>Post Your Job - Detail the skills and qualifications you need</li>
-					<li>Review Matched Candidates - See ranked applicants based on match quality</li>
-					<li>Engage With Top Prospects - Easily connect with promising candidates</li>
-					<li>Build Your Team - Make confident hiring decisions based on objective matching</li>
-				</ol>
-			</div>
-		</div>
-	</section>
+		</section>
 
-	<section class="testimonials">
-		<h2 class="text-center mb-4">Testimonials</h2>
-		<!-- Using grid for testimonials for potential future multi-column layout -->
-		<div class="grid grid-cols-2">
-			<div class="testimonial-card">
-				<blockquote>
-					"This platform completely transformed our hiring process. We found qualified candidates
-					faster and with much less effort than traditional methods."
-				</blockquote>
-				<cite>— Alex Johnson, HR Director</cite>
+		<section class="testimonials" aria-labelledby="testimonials-heading">
+			<h2 id="testimonials-heading" class="text-center mb-4">Testimonials</h2>
+			<div class="grid grid-cols-2">
+				<div class="testimonial-card">
+					<blockquote>
+						"This platform completely transformed our hiring process. We found qualified candidates
+						faster and with much less effort than traditional methods."
+					</blockquote>
+					<cite>— Alex Johnson, HR Director</cite>
+				</div>
+				<div class="testimonial-card">
+					<blockquote>
+						"I was skeptical about AI matching at first, but my new position is genuinely perfect
+						for my skill set. The platform matched me with a role I might never have found
+						otherwise."
+					</blockquote>
+					<cite>— Sarah Williams, Software Developer</cite>
+				</div>
 			</div>
-			<div class="testimonial-card">
-				<blockquote>
-					"I was skeptical about AI matching at first, but my new position is genuinely perfect
-					for my skill set. The platform matched me with a role I might never have found
-					otherwise."
-				</blockquote>
-				<cite>— Sarah Williams, Software Developer</cite>
-			</div>
-		</div>
-	</section>
+		</section>
+	</main>
 
-	<footer class="final-cta text-center mt-5">
-		<!-- Reusing hero styles but could be customized -->
+	<footer class="site-footer final-cta text-center mt-5">
 		<h2 class="text-white">Join the Smarter Way to Connect</h2>
 		<p class="text-white mb-4">
 			Create your free account today and experience the power of AI-driven job matching.
 		</p>
-		<!-- Update final CTA button as well -->
-		<a href="/register" class="cta-final button-outline">Create Free Account</a>
+		<a href="/register" class="cta-final button-outline" aria-label="Create your free account">Create Free Account</a>
 	</footer>
 </div>
 
@@ -167,7 +166,7 @@
     margin-bottom: var(--spacing-lg);
   }
 
-  h1 {
+  .hero-heading {
     font-size: 2.5rem;
     margin-bottom: var(--spacing-md);
     color: var(--primary-color);
@@ -204,11 +203,19 @@
     display: inline-flex;
     align-items: center;
     transition: background-color 0.2s ease;
+    /* Accessibility improvements */
+    min-height: 44px;
+    min-width: 44px;
   }
   
   .button-primary:hover {
     background-color: var(--primary-color-dark);
     text-decoration: none;
+  }
+  
+  .button-primary:focus {
+    outline: 3px solid var(--focus-ring-color, #4A90E2);
+    outline-offset: 2px;
   }
   
   .button-secondary {
@@ -224,11 +231,19 @@
     display: inline-flex;
     align-items: center;
     transition: background-color 0.2s ease, border-color 0.2s ease;
+    /* Accessibility improvements */
+    min-height: 44px;
+    min-width: 44px;
   }
   
   .button-secondary:hover {
     background-color: var(--primary-color-light);
     text-decoration: none;
+  }
+  
+  .button-secondary:focus {
+    outline: 3px solid var(--focus-ring-color, #4A90E2);
+    outline-offset: 2px;
   }
 
   .button-outline {
@@ -244,11 +259,19 @@
     display: inline-flex;
     align-items: center;
     transition: background-color 0.2s ease;
+    /* Accessibility improvements */
+    min-height: 44px;
+    min-width: 44px;
   }
   
   .button-outline:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.3);
     text-decoration: none;
+  }
+  
+  .button-outline:focus {
+    outline: 3px solid white;
+    outline-offset: 2px;
   }
 
   /* Text utilities */
@@ -329,12 +352,48 @@
       align-items: center;
     }
 
-    h1 {
+    .hero-heading {
       font-size: 2rem;
     }
 
     .benefit-group, .how-group {
       margin-bottom: var(--spacing-md);
     }
+    
+    /* Fix grid on small screens */
+    .grid.grid-cols-2 {
+      display: block;
+    }
+    
+    .testimonial-card {
+      margin-bottom: var(--spacing-md);
+    }
+  }
+  
+  /* Skip link for keyboard users */
+  .skip-link {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: var(--primary-color);
+    color: white;
+    padding: 8px;
+    z-index: 100;
+    transition: top 0.1s ease-in;
+  }
+  
+  .skip-link:focus {
+    top: 0;
   }
 </style>
+
+<svelte:head>
+  <!-- Add relevant meta tags for accessibility -->
+  <title>HiringHub - Where Talent Meets Demand</title>
+  <meta name="description" content="Connect with opportunities that align with your skills and experience, powered by intelligent matching technology.">
+  <meta name="language" content="en">
+</svelte:head>
+
+<div class="skip-to-content">
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+</div>

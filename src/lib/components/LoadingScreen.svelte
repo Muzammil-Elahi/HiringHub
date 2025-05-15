@@ -13,6 +13,9 @@
   let timeoutId: NodeJS.Timeout;
   
   onMount(() => {
+    // Disable background interactions using ARIA
+    document.body.setAttribute('aria-hidden', 'true');
+    
     timeoutId = setTimeout(() => {
       // Force reset loading state after timeout
       authStore.setLoading(false);
@@ -22,12 +25,21 @@
   
   onDestroy(() => {
     if (timeoutId) clearTimeout(timeoutId);
+    document.body.removeAttribute('aria-hidden');
   });
 </script>
 
-<div class="loading-screen" transition:fade={{ duration: 150 }}>
+<div 
+  class="loading-screen" 
+  transition:fade={{ duration: 150 }}
+  role="progressbar" 
+  aria-valuetext={message}
+  aria-live="assertive"
+  aria-modal="true"
+  tabindex="-1"
+>
   <div class="loading-content">
-    <div class="spinner"></div>
+    <div class="spinner" aria-hidden="true"></div>
     <p class="loading-text">{message}</p>
   </div>
 </div>
@@ -55,6 +67,7 @@
     box-shadow: var(--box-shadow-md, 0 4px 6px rgba(0, 0, 0, 0.1));
     max-width: 90%;
     width: 300px;
+    color: var(--text-color); /* Ensure text has proper contrast */
   }
 
   .spinner {
@@ -76,10 +89,17 @@
     font-size: 1rem;
     color: var(--text-color, #333);
     margin: 0;
+    font-weight: 500; /* Slightly enhanced for readability */
   }
   
   /* Dark mode support */
   :global([data-theme="dark"]) .loading-screen {
     background-color: rgba(var(--background-color-rgb, 17, 24, 39), 0.9);
+  }
+  
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation: none;
+    }
   }
 </style> 

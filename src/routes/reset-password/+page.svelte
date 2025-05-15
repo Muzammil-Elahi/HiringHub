@@ -67,7 +67,9 @@
       
       if (!result.success) {
         // Format error messages in a user-friendly way
-        const errorMessage = result.error.message || 'Password reset request failed';
+        const errorMessage = result.error && typeof result.error === 'object' && 'message' in result.error 
+          ? String(result.error.message) 
+          : 'Password reset request failed';
         
         if (errorMessage.toLowerCase().includes('email')) {
           emailError = errorMessage;
@@ -99,48 +101,62 @@
   }
 </script>
 
+<svelte:head>
+  <title>Reset Password - HiringHub</title>
+  <meta name="description" content="Reset your HiringHub account password securely.">
+</svelte:head>
+
 <div class="container auth-page">
-  <div class="auth-card">
-    <h2>Reset Password</h2>
+  <div class="auth-card" role="region" aria-labelledby="reset-password-heading">
+    <h1 id="reset-password-heading">Reset Password</h1>
     
     {#if error}
-      <div class="error-message">
-        <p><span class="error-icon">⚠️</span> {error}</p>
+      <div class="error-message" role="alert" aria-live="assertive">
+        <p><span class="error-icon" aria-hidden="true">⚠️</span> {error}</p>
       </div>
     {/if}
     
     {#if success}
-      <div class="success-message">
-        <p><span class="success-icon">✓</span> Password reset link sent! Please check your email for instructions.</p>
+      <div class="success-message" role="status" aria-live="polite">
+        <p><span class="success-icon" aria-hidden="true">✓</span> Password reset link sent! Please check your email for instructions.</p>
       </div>
     {/if}
     
-    <form on:submit|preventDefault={handleResetRequest}>
+    <form on:submit|preventDefault={handleResetRequest} novalidate>
       <div class="form-group {emailError ? 'has-error' : ''}">
-        <label for="email">Email</label>
+        <label for="email" id="email-label">Email</label>
         <input
           id="email"
           type="email"
           placeholder="your@email.com"
           bind:value={email}
           on:focus={handleFocus}
+          on:blur={validateEmail}
           class:error-input={emailError}
           disabled={loading || success}
+          aria-required="true"
+          aria-invalid={!!emailError}
+          aria-describedby={emailError ? "email-error" : "form-instructions"}
           required
         />
         {#if emailError}
-          <div class="field-error">
+          <div class="field-error" id="email-error" role="alert">
             <p>{emailError}</p>
           </div>
         {/if}
       </div>
       
-      <div class="form-info">
+      <div class="form-info" id="form-instructions">
         <p>Enter your email address and we'll send you a link to reset your password.</p>
       </div>
       
       <div class="form-actions">
-        <button type="submit" class="btn-primary" disabled={loading || success}>
+        <button 
+          type="submit" 
+          class="btn-primary" 
+          disabled={loading || success}
+          aria-busy={loading}
+        >
           {loading ? 'Sending...' : 'Send Reset Link'}
         </button>
       </div>
@@ -167,10 +183,11 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   }
   
-  h2 {
+  h1 {
     text-align: center;
     margin-bottom: var(--spacing-lg);
     color: var(--primary-color);
+    font-size: 1.75rem;
   }
   
   .form-group {
@@ -196,21 +213,23 @@
     border-radius: var(--border-radius);
     font-size: var(--font-size-base);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    min-height: var(--min-target-size);
   }
   
   .form-group input:focus {
-    outline: none;
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.2);
+    box-shadow: none;
   }
   
   .form-group input.error-input {
     border-color: var(--error-text-color);
-    background-color: rgba(var(--error-bg-color), 0.05);
+    background-color: #fff8f8;
   }
   
   .form-group input.error-input:focus {
-    box-shadow: 0 0 0 2px rgba(var(--error-text-color), 0.2);
+    outline-color: var(--error-text-color);
   }
   
   .field-error {
@@ -251,10 +270,16 @@
     cursor: pointer;
     font-weight: 500;
     transition: background-color 0.2s;
+    min-height: var(--min-target-size);
   }
   
   .btn-primary:hover:not(:disabled) {
     background-color: var(--primary-color-dark);
+  }
+  
+  .btn-primary:focus {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
   }
   
   .btn-primary:disabled {
@@ -275,9 +300,17 @@
   .auth-footer a {
     color: var(--primary-color);
     text-decoration: none;
+    padding: var(--spacing-xs);
+    display: inline-block;
   }
   
   .auth-footer a:hover {
+    text-decoration: underline;
+  }
+  
+  .auth-footer a:focus {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
     text-decoration: underline;
   }
   
@@ -319,5 +352,15 @@
   @keyframes slideIn {
     from { opacity: 0; transform: translateY(-5px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+  
+  @media (prefers-reduced-motion: reduce) {
+    .error-message {
+      animation: none;
+    }
+    
+    .field-error {
+      animation: none;
+    }
   }
 </style> 
