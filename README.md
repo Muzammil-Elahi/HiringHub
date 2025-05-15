@@ -9,20 +9,22 @@ HiringHub streamlines the hiring process by analyzing resumes and job descriptio
 ## Features
 
 ### For Job Seekers
-- **AI-Powered Job Matching**: See match percentages based on your resume and skills
+- **AI-Powered Job Matching**: See color-coded match percentages based on your resume and skills
+- **Match Sorting**: Sort job listings by match percentage to find the best opportunities
 - **One-Click Apply**: Apply to jobs with a single click using your stored resume
 - **Profile Management**: Create and maintain a professional profile
 - **Resume Upload**: Store your resume for easy applications
-- **Real-Time Messaging**: Communicate directly with hiring managers
+- **Real-Time Messaging**: Communicate directly with hiring managers with job context
 - **Video/Audio Calls**: Participate in interviews directly through the platform
 - **Application Tracking**: Monitor all your job applications in one place
 
 ### For Hiring Managers
 - **Job Posting**: Create and manage detailed job listings
+- **Job Management**: Dedicated dashboard for managing all your job postings
 - **Candidate Matching**: AI-powered candidate suggestions based on job requirements
 - **Application Management**: View and process applications efficiently
 - **Company Profile**: Showcase your company to potential candidates
-- **Real-Time Messaging**: Communicate directly with candidates
+- **Real-Time Messaging**: Communicate directly with candidates with job context
 - **Video/Audio Interviews**: Conduct interviews without leaving the platform
 - **Application Statistics**: Track application metrics for each job posting
 
@@ -33,27 +35,53 @@ HiringHub streamlines the hiring process by analyzing resumes and job descriptio
 - **Authentication**: Supabase Auth
 - **Real-time Features**: Supabase Realtime
 - **Storage**: Supabase Storage (for resumes)
+- **AI Matching**: Semantic search with TF-IDF and cosine similarity
 - **Styling**: Custom CSS with variables for theming
+
+## Recent Updates
+
+### Improved Matching Algorithm
+- **Semantic Search**: Enhanced the matching algorithm to use semantic search instead of just keyword matching
+- **TF-IDF Vectors**: Implemented TF-IDF vectorization to properly weight important terms in resumes and job descriptions
+- **Cosine Similarity**: Added cosine similarity calculation to produce more accurate match percentages
+
+### Enhanced Job Board
+- **Color-Coded Match Percentages**: Match percentages now use color coding (green, orange, red) to visually indicate match quality
+- **Improved Match Sorting UI**: Added a more intuitive toggle button for sorting jobs by match
+- **Consistent Match Display**: Match percentages are now shown for all jobs regardless of sorting preference
+
+### Messaging Improvements
+- **Job Context in Messages**: Added job title and company name to chat headers and conversation lists
+- **Clickable Job Links**: Job information in chats now links directly to job postings
+- **Scrollable Chat Window**: Fixed UI issues to ensure message scrolling works properly
+- **Underlined Links**: Enhanced visual cues for clickable elements
+
+### User Experience Enhancements
+- **Job Management Link**: Added a dedicated job management link in the navbar for hiring managers
+- **Calling Restrictions**: Video/audio calling functionality is now restricted to hiring managers only
+- **UI Consistency**: Improved layout and styling consistency across the platform
 
 ## Use Cases
 
 ### Job Seeker Journey
 1. Create an account and profile
 2. Upload resume for AI analysis
-3. Browse job listings with personalized match percentages
-4. Apply to jobs with one click
-5. Communicate with hiring managers via messaging
-6. Participate in video/audio interviews
-7. Track application status
+3. Browse job listings with personalized, color-coded match percentages
+4. Sort jobs by match percentage to find the best opportunities
+5. Apply to jobs with one click
+6. Communicate with hiring managers via messaging with job context
+7. Participate in video/audio interviews
+8. Track application status
 
 ### Hiring Manager Journey
 1. Create an account and company profile
 2. Post detailed job listings with skill requirements
-3. Review applications sorted by match quality
-4. Message promising candidates
-5. Conduct video/audio interviews
-6. Manage hiring pipeline with status tracking
-7. Access application statistics
+3. Access job listings via the dedicated Job Management section
+4. Review applications sorted by match quality
+5. Message promising candidates with job context automatically included
+6. Initiate video/audio interviews with candidates
+7. Manage hiring pipeline with status tracking
+8. Access application statistics
 
 ## Getting Started
 
